@@ -17,6 +17,7 @@ from typing import Any
 
 from sqlglot import exp
 
+from data_navigator.catalog.repository import SchemaMap
 from data_navigator.config import SampleSettings, Secrets, Settings
 from data_navigator.sqlproc.readonly_guard import (
     apply_row_limit,
@@ -199,23 +200,38 @@ def sample_session_properties(samples: SampleSettings) -> Mapping[str, str]:
 
 
 def build_end_user_client(
-    settings: Settings, secrets: Secrets, *, user: str | None = None
+    settings: Settings,
+    secrets: Secrets,
+    *,
+    user: str | None = None,
+    schema_map: SchemaMap | None = None,
 ) -> EndUserClient:
     """Wire an :class:`EndUserClient` for the identity supplied by the harness.
 
     *user* defaults to ``DN_END_USER_USER``; the model never sees or sets it.
+    With ``starburst.end_user.source: fixture`` the statements are simulated
+    against *schema_map* (the catalog) instead of a cluster.
     """
     identity = user or secrets.end_user_user
     if not identity:
         msg = "end-user identity missing: set DN_END_USER_USER"
         raise RuntimeError(msg)
-    credentials = Credentials(
-        user=identity, password=secrets.end_user_password, jwt=secrets.end_user_jwt
-    )
-    factory = make_connection_factory(
-        settings.starburst.connection,
-        credentials,
-        source_suffix="end-user",
-        session_properties=sample_session_properties(settings.samples),
-    )
+    factory: ConnectionFactory
+    if settings.starburst.end_user.source == "fixture":
+        from data_navigator.starburst.fixture_connection import make_fixture_connection_factory
+
+        factory = make_fixture_connection_factory(
+            schema_map or {}, user=identity, access=settings.starburst.end_user.fixture_access
+        )
+        log.info("end-user statements are simulated (starburst.end_user.source: fixture)")
+    else:
+        credentials = Credentials(
+            user=identity, password=secrets.end_user_password, jwt=secrets.end_user_jwt
+        )
+        factory = make_connection_factory(
+            settings.starburst.connection,
+            credentials,
+            source_suffix="end-user",
+            session_properties=sample_session_properties(settings.samples),
+        )
     return EndUserClient(factory, max_rows=settings.samples.max_rows)

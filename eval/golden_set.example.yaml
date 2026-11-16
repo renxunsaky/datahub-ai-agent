@@ -1,0 +1,33 @@
+# Golden set for eval/run_eval.py (example; questions match the bundled fixtures
+# and the replay script in eval/replay.example.yaml).
+#
+# Each case has: question, user, and either expected_sql (mode "sql") or
+# expected_mode: candidates; expected_tables lists the tables a good answer
+# relies on (used for recall@5).
+cases:
+  - id: balance_by_segment
+    question: "What is the total balance per customer segment today?"
+    user: alice
+    expected_sql: >-
+      SELECT c.segment_code, SUM(a.balance) AS total_balance
+      FROM cos.retail_ods.account a
+      JOIN cos.retail_ods.customer c ON a.customer_id = c.customer_id
+      WHERE a.status = 'OPEN' AND a.dt = CURRENT_DATE
+      GROUP BY c.segment_code
+    expected_tables: [cos.retail_ods.account, cos.retail_ods.customer]
+
+  - id: ambiguous_risk
+    question: "Show me the risk of our customers"
+    user: carol
+    expected_mode: candidates
+    expected_tables: [cos.risk_dm.customer_risk_score, cos.risk_dm.daily_exposure]
+
+  - id: debit_by_channel
+    question: "Debit volume per channel since October"
+    user: bob
+    expected_sql: >-
+      SELECT channel, SUM(amount) AS total
+      FROM cos.retail_ods.transaction
+      WHERE txn_type = 'DEBIT' AND dt >= DATE '2026-10-01'
+      GROUP BY channel
+    expected_tables: [cos.retail_ods.transaction]

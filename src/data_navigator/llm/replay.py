@@ -125,9 +125,9 @@ def response_from_dict(data: Mapping[str, Any]) -> ChatResponse:
 
 
 def _latest_input(messages: Sequence[Message]) -> str:
-    """The newest user/tool message content, used to pick a replay entry."""
+    """The newest user message content, used to pick a replay entry."""
     for message in reversed(messages):
-        if message.get("role") in {"user", "tool"}:
+        if message.get("role") == "user":
             content = message.get("content")
             return content if isinstance(content, str) else json.dumps(content)
     return ""

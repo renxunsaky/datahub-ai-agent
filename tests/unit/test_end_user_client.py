@@ -211,7 +211,9 @@ def test_build_end_user_client_uses_harness_identity(monkeypatch: pytest.MonkeyP
     secrets = Secrets(  # type: ignore[call-arg]
         _env_file=None, end_user_user="alice", end_user_password=SecretStr("pw")
     )
-    client = build_end_user_client(Settings(), secrets)
+    settings = Settings()
+    settings.starburst.end_user.source = "starburst"
+    client = build_end_user_client(settings, secrets)
     assert client.max_rows == 10
     assert client.explain("SELECT 1").ok
     assert captured["user"] == "alice"

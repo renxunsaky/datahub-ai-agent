@@ -8,14 +8,20 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import subprocess
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
 
+import click
 import typer
 
-from data_navigator.catalog.factory import create_repository
+from data_navigator.agent.factory import build_agent_session
+from data_navigator.agent.session import AgentReply, AgentSession
+from data_navigator.catalog.factory import open_repository
 from data_navigator.catalog.records import (
     CARD_STATUS_AI,
     CARD_STATUS_CONFIRMED,
@@ -45,6 +51,7 @@ DEFAULT_CONFIG = Path("config.yaml")
 class AppContext:
     settings: Settings
     secrets: Secrets
+    config_path: Path | None = None
 
 
 def _context(ctx: typer.Context) -> AppContext:
@@ -85,31 +92,7 @@ def main(
     secrets_file: Path | str | None = env_file
     if secrets_file is None:
         secrets_file = ".env" if Path(".env").exists() else None
-    ctx.obj = AppContext(settings=settings, secrets=load_secrets(secrets_file))
-
-
-def open_repository(settings: Settings, *, dry_run: bool) -> CatalogRepository:
-    """Open the catalog; a dry run never creates or migrates a database on disk."""
-    if dry_run and settings.storage.backend == "sqlite":
-        path = _sqlite_path(settings.storage.url)
-        if path is None or not path.exists():
-            memory = settings.storage.model_copy(update={"url": "sqlite://"})
-            repo = create_repository(memory)
-            repo.initialize()
-            return repo
-        return create_repository(settings.storage)
-    repo = create_repository(settings.storage)
-    repo.initialize()
-    return repo
-
-
-def _sqlite_path(url: str) -> Path | None:
-    if "///" not in url:
-        return None
-    raw = url.split("///", 1)[1]
-    if not raw or raw == ":memory:":
-        return None
-    return Path(raw).expanduser()
+    ctx.obj = AppContext(settings=settings, secrets=load_secrets(secrets_file), config_path=config)
 
 
 def _print_summary(summary: BuildSummary) -> None:
@@ -386,6 +369,129 @@ def review_edit(
         typer.echo(f"unknown table {table}", err=True)
         raise typer.Exit(code=1)
     typer.echo(f"{table}: edited {', '.join(sorted(edits))}; status {card.review_status}")
+
+
+# -- agent -----------------------------------------------------------------------------
+
+
+def _print_reply(reply: AgentReply) -> None:
+    typer.echo(reply.text)
+    if reply.sample is not None:
+        sample = reply.sample
+        if sample.get("status") == "ok":
+            typer.echo("")
+            typer.echo(
+                f"sample ({sample.get('row_count', 0)} row(s), limit {sample.get('row_limit')}):"
+            )
+            typer.echo(" | ".join(sample.get("columns", [])))
+            for row in sample.get("rows", []):
+                typer.echo(" | ".join(str(v) for v in row))
+        else:
+            typer.echo(f"sample not executed: {sample.get('status')} {sample.get('message') or ''}")
+
+
+def _confirm_loop(session: AgentSession, reply: AgentReply) -> AgentReply:
+    """Resolve pending sample confirmations with a [y/N] prompt."""
+    while reply.needs_confirmation:
+        typer.echo("The agent wants to run this SQL with your identity:")
+        typer.echo(reply.sql or "")
+        max_rows = reply.pending.get("max_rows") if reply.pending else None
+        approved = typer.confirm(f"Allow reading at most {max_rows} sample row(s)?", default=False)
+        reply = session.resume(approved)
+    return reply
+
+
+@app.command()
+def chat(
+    ctx: typer.Context,
+    user: Annotated[
+        str | None, typer.Option("--user", help="Override DN_END_USER_USER (local runs only).")
+    ] = None,
+) -> None:
+    """Interactive conversation: describe the data you need, get validated read-only SQL."""
+    app_ctx = _context(ctx)
+    repo = open_repository(app_ctx.settings, dry_run=True)
+    try:
+        session = build_agent_session(app_ctx.settings, app_ctx.secrets, repo, user=user)
+    except RuntimeError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    typer.echo(f"Data Navigator chat as {session.user}. Type 'exit' to quit.")
+    while True:
+        try:
+            question = typer.prompt("you")
+        except (EOFError, KeyboardInterrupt, click.Abort):
+            typer.echo("")
+            break
+        if question.strip().lower() in {"exit", "quit", "q"}:
+            break
+        if not question.strip():
+            continue
+        reply = _confirm_loop(session, session.ask(question))
+        _print_reply(reply)
+
+
+@app.command()
+def ui(
+    ctx: typer.Context,
+    port: Annotated[int, typer.Option("--port", min=1, max=65535)] = 8501,
+) -> None:
+    """Start the local Streamlit page (single user, reads credentials from .env)."""
+    app_ctx = _context(ctx)
+    script = Path(__file__).resolve().parent / "ui" / "streamlit_app.py"
+    env = dict(os.environ)
+    config_path = (
+        ctx.params.get("config") or ctx.parent.params.get("config") if ctx.parent else None
+    )
+    if config_path:
+        env["DN_CONFIG_PATH"] = str(config_path)
+    elif DEFAULT_CONFIG.exists():
+        env["DN_CONFIG_PATH"] = str(DEFAULT_CONFIG.resolve())
+    env.setdefault("DN_END_USER_USER", app_ctx.secrets.end_user_user or "")
+    command = [
+        sys.executable,
+        "-m",
+        "streamlit",
+        "run",
+        str(script),
+        "--server.port",
+        str(port),
+        "--server.headless",
+        "true",
+        "--browser.gatherUsageStats",
+        "false",
+    ]
+    typer.echo(f"starting Streamlit on http://localhost:{port}")
+    result = subprocess.run(command, env=env, check=False)
+    raise typer.Exit(code=result.returncode)
+
+
+@app.command()
+def audit(
+    ctx: typer.Context,
+    user: Annotated[str | None, typer.Option("--user")] = None,
+    limit: Annotated[int, typer.Option("--limit", min=1)] = 50,
+) -> None:
+    """Show recent audit entries (question, de-identified SQL, validation, sample facts)."""
+    app_ctx = _context(ctx)
+    repo = open_repository(app_ctx.settings, dry_run=True)
+    entries = repo.list_audit_entries(user=user, limit=limit)
+    if not entries:
+        typer.echo("no audit entries")
+        return
+    for entry in entries:
+        when = entry.occurred_at.isoformat() if entry.occurred_at else "-"
+        sample = (
+            f"sample confirmed={entry.sample_confirmed} executed={entry.sample_executed} "
+            f"rows={entry.sample_row_count}"
+            if entry.sample_confirmed is not None
+            else "no sample"
+        )
+        typer.echo(
+            f"{when} {entry.user} [{entry.details.get('mode', entry.details.get('event', '-'))}] "
+            f"validation={entry.validation_status or '-'} {sample}\n  q: {entry.question}"
+            + (f"\n  sql: {entry.generated_sql}" if entry.generated_sql else "")
+        )
 
 
 def _json_list(raw: str, option: str) -> list[Any]:
