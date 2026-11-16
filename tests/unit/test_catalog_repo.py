@@ -290,3 +290,80 @@ def test_factory_and_postgres_stub(tmp_path: Path) -> None:
         create_repository(StorageSettings(backend="postgres", url="postgresql://x"))
     with pytest.raises(ValueError, match="SQLite"):
         SqliteCatalogRepository("postgresql://nope")
+
+
+# -- table cards and audit (phase 2 / 4) -------------------------------------------
+
+
+def test_cards_are_saved_reviewed_and_protected(repo: SqliteCatalogRepository) -> None:
+    from data_navigator.catalog.records import AuditRecord, CardDraft, KeyColumn
+
+    repo.upsert_tables([table("c.s.t", ("id", "bigint"), ("v", "double"))], seen_at=NOW)
+    draft = CardDraft(
+        purpose="first",
+        key_columns=[KeyColumn("id", "identifier", 0.9, "comment")],
+        common_usage="usage",
+        example_questions=["q1"],
+        overall_confidence=0.8,
+        evidence=["e"],
+    )
+    assert repo.get_card("c.s.t") is None and repo.list_cards() == []
+    assert (
+        repo.save_generated_card("c.s.missing", draft, input_hash="h", model="m", generated_at=NOW)
+        is None
+    )
+    card = repo.save_generated_card("c.s.t", draft, input_hash="h1", model="m", generated_at=NOW)
+    assert card is not None and card.purpose == "first" and card.key_columns[0].name == "id"
+    assert card.review_status == "ai_inferred" and card.input_hash == "h1"
+    assert [c.table for c in repo.list_cards(status="ai_inferred")] == ["c.s.t"]
+
+    edited = repo.review_card(
+        "c.s.t",
+        status="ai_inferred",
+        reviewed_by="eve",
+        reviewed_at=NOW,
+        edits={
+            "example_questions": ["human q"],
+            "key_columns": [{"name": "v", "meaning": "value"}],
+        },
+    )
+    assert edited is not None and edited.confirmed_fields == ["example_questions", "key_columns"]
+    assert edited.key_columns[0].name == "v"
+    draft.purpose = "second"
+    again = repo.save_generated_card("c.s.t", draft, input_hash="h2", model="m", generated_at=NOW)
+    assert again is not None and again.purpose == "second"
+    assert again.example_questions == ["human q"] and again.key_columns[0].name == "v"
+
+    confirmed = repo.review_card("c.s.t", status="confirmed", reviewed_by="eve", reviewed_at=NOW)
+    assert confirmed is not None and confirmed.is_confirmed
+    draft.purpose = "third"
+    kept = repo.save_generated_card("c.s.t", draft, input_hash="h3", model="m", generated_at=NOW)
+    assert kept is not None and kept.purpose == "second" and kept.input_hash == "h3"
+
+    with pytest.raises(ValueError, match="unknown card status"):
+        repo.review_card("c.s.t", status="bogus", reviewed_by="eve", reviewed_at=NOW)
+    with pytest.raises(ValueError, match="cannot be edited"):
+        repo.review_card(
+            "c.s.t", status="confirmed", reviewed_by="eve", reviewed_at=NOW, edits={"model": "x"}
+        )
+    assert (
+        repo.review_card("c.s.none", status="confirmed", reviewed_by="eve", reviewed_at=NOW) is None
+    )
+    fresh = repo.review_card("c.s.t2", status="rejected", reviewed_by="eve", reviewed_at=NOW)
+    assert fresh is None
+
+    repo.set_column_descriptions("c.s.t", {"ID": "the id", "ghost": "x"})
+    repo.set_column_descriptions("c.s.none", {"id": "x"})
+    state = repo.get_table("c.s.t")
+    assert state is not None and state.columns[0].ai_description == "the id"
+
+    entry_id = repo.add_audit_entry(
+        AuditRecord(user="alice", question="q", generated_sql="SELECT ?", validation_status="ok")
+    )
+    repo.add_audit_entry(
+        AuditRecord(user="bob", question="q2", sample_executed=True, sample_row_count=3)
+    )
+    entries = repo.list_audit_entries()
+    assert [e.user for e in entries] == ["bob", "alice"] and entries[1].id == entry_id
+    assert entries[0].sample_row_count == 3 and entries[1].occurred_at is not None
+    assert [e.user for e in repo.list_audit_entries(user="alice", limit=5)] == ["alice"]

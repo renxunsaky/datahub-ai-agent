@@ -79,11 +79,27 @@ class BuilderSettings(BaseModel):
     user: str = "data_navigator_builder"
 
 
+class EndUserSettings(BaseModel):
+    """How end-user statements (``EXPLAIN`` and samples) are executed.
+
+    ``starburst`` uses the person's own credentials against the real cluster.
+    ``fixture`` simulates the cluster locally against the catalog schema, with a
+    static access list, so the agent can be exercised without a connection.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["starburst", "fixture"] = "fixture"
+    # Fixture only: user -> list of glob patterns over ``catalog.schema.table``.
+    fixture_access: dict[str, list[str]] = Field(default_factory=dict)
+
+
 class StarburstSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     connection: StarburstConnectionSettings = Field(default_factory=StarburstConnectionSettings)
     builder: BuilderSettings = Field(default_factory=BuilderSettings)
+    end_user: EndUserSettings = Field(default_factory=EndUserSettings)
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +285,10 @@ class LLMSettings(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    # ``openai_compatible`` talks to LLMaaS; ``replay`` answers from a local YAML
+    # script (tests, demos and the evaluation harness without a real model);
+    # ``none`` disables every LLM feature (cards are skipped, search is text-only).
+    provider: Literal["openai_compatible", "replay", "none"] = "none"
     # Deliberately no default: the application must never fall back to a public endpoint.
     base_url: str | None = None
     # TODO(confirm): model names offered by LLMaaS, and whether embeddings are available.
@@ -279,6 +299,23 @@ class LLMSettings(BaseModel):
     max_concurrency: int = Field(default=4, ge=1)
     # TODO(confirm): LLMaaS rate limits.
     requests_per_minute: int = Field(default=60, ge=1)
+    temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    # TODO(confirm): whether LLMaaS honours ``response_format: {"type": "json_object"}``.
+    json_mode: bool = True
+    # Replay provider only.
+    replay_path: Path = Path("eval/replay.example.yaml")
+
+    @field_validator("base_url")
+    @classmethod
+    def _internal_only(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        lowered = value.lower()
+        for public in ("api.openai.com", "api.anthropic.com", "generativelanguage.googleapis.com"):
+            if public in lowered:
+                msg = f"llm.base_url must point at the internal LLMaaS, not {public}"
+                raise ValueError(msg)
+        return value
 
 
 class AgentSettings(BaseModel):
@@ -287,6 +324,18 @@ class AgentSettings(BaseModel):
     max_tool_steps: int = Field(default=10, ge=1)
     max_sql_retries: int = Field(default=3, ge=0)
     search_limit: int = Field(default=8, ge=1)
+    similar_queries_limit: int = Field(default=5, ge=1)
+    # Keep only the last N messages of a conversation in the prompt.
+    history_window: int = Field(default=40, ge=4)
+
+
+class SearchSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Reciprocal-rank-fusion constant.
+    rrf_k: int = Field(default=60, ge=1)
+    # Candidates fetched from each index before fusion.
+    candidate_multiplier: int = Field(default=3, ge=1)
 
 
 class CardsSettings(BaseModel):
@@ -299,9 +348,11 @@ class CardsSettings(BaseModel):
 
 
 class AuditSettings(BaseModel):
+    """Audit entries are always stored in the catalog database; ``path`` adds a JSONL copy."""
+
     model_config = ConfigDict(extra="forbid")
 
-    path: Path = Path("audit.jsonl")
+    path: Path | None = Path("audit.jsonl")
 
 
 # ---------------------------------------------------------------------------
@@ -330,6 +381,7 @@ class Settings(BaseSettings):
     teams: TeamsSettings = Field(default_factory=TeamsSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
     agent: AgentSettings = Field(default_factory=AgentSettings)
+    search: SearchSettings = Field(default_factory=SearchSettings)
     cards: CardsSettings = Field(default_factory=CardsSettings)
     audit: AuditSettings = Field(default_factory=AuditSettings)
 

@@ -1,6 +1,7 @@
 """Full-text search interface.
 
-MVP implementation (phase 2): SQLite FTS5.  Later: PostgreSQL full-text search.
+MVP implementation: SQLite FTS5 (``sqlite_text_index``).  Later: PostgreSQL
+full-text search (``postgres_index`` stub).
 """
 
 from __future__ import annotations
@@ -26,6 +27,9 @@ class SearchHit:
 class TextIndex(Protocol):
     def index(self, documents: Iterable[TextDocument]) -> None: ...
 
-    def search(self, query: str, *, limit: int = 10) -> list[SearchHit]: ...
+    def search(self, query: str, *, limit: int = 10, prefix: str | None = None) -> list[SearchHit]:
+        """Rank documents for *query*; *prefix* restricts to ``doc_id`` values starting with it."""
 
     def remove(self, doc_ids: Iterable[str]) -> None: ...
+
+    def clear(self) -> None: ...

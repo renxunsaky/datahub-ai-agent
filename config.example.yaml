@@ -23,6 +23,14 @@ starburst:
     source_tag: data-navigator
   builder:
     user: data_navigator_builder       # TODO(confirm); password in DN_BUILDER_PASSWORD
+  end_user:
+    source: fixture              # starburst | fixture (simulated EXPLAIN/samples for local runs)
+    fixture_access:              # fixture only: user -> glob patterns of accessible tables
+      alice: ["cos.retail_*.*", "cos.ref.*"]
+      bob: ["cos.retail_ods.*"]
+      carol: ["cos.risk_dm.*", "cos.retail_dm.*", "cos.ref.*"]
+      dave: ["cos.cards_*.*", "cos.retail_ods.account"]
+      eve: ["cos.*.*"]
 
 samples:
   max_rows: 10                 # hard cap on sample rows; the LLM cannot change it
@@ -99,18 +107,28 @@ teams:
   default_team: null
 
 llm:
-  base_url: null               # REQUIRED before phase 2; must point at internal LLMaaS
+  provider: replay             # openai_compatible | replay | none
+  base_url: null               # REQUIRED for openai_compatible; must point at internal LLMaaS
   model: null                  # TODO(confirm)
   embedding_model: null        # TODO(confirm); null disables vector search
   timeout_s: 60
   max_retries: 3
   max_concurrency: 4
   requests_per_minute: 60      # TODO(confirm)
+  temperature: 0.0
+  json_mode: true              # TODO(confirm) LLMaaS supports response_format json_object
+  replay_path: eval/replay.example.yaml   # replay provider: scripted answers for the fixtures
 
 agent:
   max_tool_steps: 10
   max_sql_retries: 3
   search_limit: 8
+  similar_queries_limit: 5
+  history_window: 40
+
+search:
+  rrf_k: 60
+  candidate_multiplier: 3
 
 cards:
   top_n_tables: 200

@@ -6,7 +6,7 @@ differ in how the engine is created.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -19,9 +19,16 @@ from sqlalchemy.orm import Session, selectinload, sessionmaker
 
 from data_navigator.catalog import models as m
 from data_navigator.catalog.records import (
+    CARD_EDITABLE_FIELDS,
+    CARD_STATUS_AI,
+    CARD_STATUSES,
+    AuditRecord,
     BuildRunRecord,
+    CardDraft,
+    CardRecord,
     ColumnState,
     JoinEdgeRecord,
+    KeyColumn,
     LineageEdgeRecord,
     ParseFailureRecord,
     SqlFileRecord,
@@ -414,6 +421,165 @@ class SqlAlchemyCatalogRepository(CatalogRepository):
                     column.is_filter = stats.is_filter if stats else False
             session.flush()
 
+    # -- table cards -----------------------------------------------------------------
+
+    def get_card(self, table: str) -> CardRecord | None:
+        with self._scope() as session:
+            row = self._get_card_row(session, table)
+            return _card_record(row) if row is not None else None
+
+    def list_cards(self, *, status: str | None = None) -> list[CardRecord]:
+        with self._scope() as session:
+            query = (
+                select(m.TableCard)
+                .join(m.CatalogTable)
+                .options(selectinload(m.TableCard.table))
+                .where(m.CatalogTable.deleted_at.is_(None))
+                .order_by(m.CatalogTable.full_name)
+            )
+            if status is not None:
+                query = query.where(m.TableCard.review_status == status)
+            return [_card_record(row) for row in session.scalars(query)]
+
+    def save_generated_card(
+        self,
+        table: str,
+        draft: CardDraft,
+        *,
+        input_hash: str,
+        model: str | None,
+        generated_at: datetime,
+    ) -> CardRecord | None:
+        with self._scope() as session:
+            table_row = self._get_table_row(session, table.lower())
+            if table_row is None:
+                return None
+            row = table_row.card
+            if row is None:
+                row = m.TableCard(table=table_row, review_status=CARD_STATUS_AI)
+                session.add(row)
+            protected = set(row.confirmed_fields or [])
+            if row.review_status != CARD_STATUS_AI:
+                # A confirmed or rejected card keeps every reviewed field.
+                protected.update(CARD_EDITABLE_FIELDS)
+            if "purpose" not in protected:
+                row.purpose = draft.purpose
+            if "key_columns" not in protected:
+                row.key_columns = [column.to_dict() for column in draft.key_columns]
+            if "common_usage" not in protected:
+                row.common_usage = draft.common_usage
+            if "example_questions" not in protected:
+                row.example_questions = list(draft.example_questions)
+            row.evidence = list(draft.evidence)
+            row.confidence = draft.overall_confidence
+            row.input_hash = input_hash
+            row.generated_at = generated_at
+            row.model = model
+            session.flush()
+            return _card_record(row)
+
+    def review_card(
+        self,
+        table: str,
+        *,
+        status: str,
+        reviewed_by: str,
+        reviewed_at: datetime,
+        edits: Mapping[str, Any] | None = None,
+    ) -> CardRecord | None:
+        if status not in CARD_STATUSES:
+            msg = f"unknown card status {status!r}"
+            raise ValueError(msg)
+        with self._scope() as session:
+            table_row = self._get_table_row(session, table.lower())
+            if table_row is None:
+                return None
+            row = table_row.card
+            if row is None:
+                row = m.TableCard(table=table_row, review_status=CARD_STATUS_AI)
+                session.add(row)
+            confirmed = list(row.confirmed_fields or [])
+            for name, value in (edits or {}).items():
+                if name not in CARD_EDITABLE_FIELDS:
+                    msg = f"card field {name!r} cannot be edited"
+                    raise ValueError(msg)
+                if name == "key_columns":
+                    value = [
+                        KeyColumn.from_dict(v).to_dict() if isinstance(v, Mapping) else v
+                        for v in value
+                    ]
+                setattr(row, name, value)
+                if name not in confirmed:
+                    confirmed.append(name)
+            row.confirmed_fields = confirmed
+            row.review_status = status
+            row.reviewed_by = reviewed_by
+            row.reviewed_at = reviewed_at
+            session.flush()
+            return _card_record(row)
+
+    def set_column_descriptions(self, table: str, descriptions: Mapping[str, str]) -> None:
+        with self._scope() as session:
+            table_row = self._get_table_row(session, table.lower())
+            if table_row is None:
+                return
+            wanted = {name.lower(): text for name, text in descriptions.items()}
+            for column in table_row.columns:
+                text = wanted.get(column.name.lower())
+                if text is not None:
+                    column.ai_description = text
+            session.flush()
+
+    @staticmethod
+    def _get_card_row(session: Session, table: str) -> m.TableCard | None:
+        query = (
+            select(m.TableCard)
+            .join(m.CatalogTable)
+            .options(selectinload(m.TableCard.table))
+            .where(m.CatalogTable.full_name == table.lower())
+        )
+        return session.scalars(query).one_or_none()
+
+    # -- audit -------------------------------------------------------------------------
+
+    def add_audit_entry(self, entry: AuditRecord) -> int:
+        with self._scope() as session:
+            row = m.AuditLog(
+                occurred_at=entry.occurred_at or utcnow(),
+                user=entry.user,
+                question=entry.question,
+                generated_sql=entry.generated_sql,
+                validation_status=entry.validation_status,
+                sample_confirmed=entry.sample_confirmed,
+                sample_executed=entry.sample_executed,
+                sample_row_count=entry.sample_row_count,
+                details=dict(entry.details),
+            )
+            session.add(row)
+            session.flush()
+            return row.id
+
+    def list_audit_entries(self, *, user: str | None = None, limit: int = 100) -> list[AuditRecord]:
+        with self._scope() as session:
+            query = select(m.AuditLog).order_by(m.AuditLog.id.desc()).limit(limit)
+            if user is not None:
+                query = query.where(m.AuditLog.user == user)
+            return [
+                AuditRecord(
+                    id=row.id,
+                    occurred_at=row.occurred_at,
+                    user=row.user,
+                    question=row.question,
+                    generated_sql=row.generated_sql,
+                    validation_status=row.validation_status,
+                    sample_confirmed=row.sample_confirmed,
+                    sample_executed=row.sample_executed,
+                    sample_row_count=row.sample_row_count,
+                    details=dict(row.details),
+                )
+                for row in session.scalars(query)
+            ]
+
     # -- build runs ------------------------------------------------------------------
 
     def start_build_run(self, run_type: str, *, started_at: datetime) -> int:
@@ -533,6 +699,25 @@ def _template_record(row: m.QueryTemplate) -> TemplateRecord:
         file_paths=list(row.file_paths),
         first_seen_at=row.first_seen_at,
         last_executed_at=row.last_executed_at,
+    )
+
+
+def _card_record(row: m.TableCard) -> CardRecord:
+    return CardRecord(
+        table=row.table.full_name,
+        purpose=row.purpose,
+        key_columns=[KeyColumn.from_dict(c) for c in (row.key_columns or [])],
+        common_usage=row.common_usage,
+        example_questions=list(row.example_questions or []),
+        evidence=list(row.evidence or []),
+        confidence=row.confidence,
+        review_status=row.review_status,
+        reviewed_by=row.reviewed_by,
+        reviewed_at=row.reviewed_at,
+        confirmed_fields=list(row.confirmed_fields or []),
+        input_hash=row.input_hash,
+        generated_at=row.generated_at,
+        model=row.model,
     )
 
 

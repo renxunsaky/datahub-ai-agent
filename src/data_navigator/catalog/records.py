@@ -8,7 +8,7 @@ SQLAlchemy details.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -197,3 +197,101 @@ class BuildRunRecord:
     files_processed: int = 0
     parse_failures: int = 0
     summary: dict[str, Any] = field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Table cards (phase 2)
+# ---------------------------------------------------------------------------
+
+CARD_STATUS_AI = "ai_inferred"
+CARD_STATUS_CONFIRMED = "confirmed"
+CARD_STATUS_REJECTED = "rejected"
+CARD_STATUSES = (CARD_STATUS_AI, CARD_STATUS_CONFIRMED, CARD_STATUS_REJECTED)
+# Fields of a card a reviewer may edit; once edited they are never regenerated.
+CARD_EDITABLE_FIELDS = ("purpose", "key_columns", "common_usage", "example_questions")
+
+
+@dataclass
+class KeyColumn:
+    name: str
+    meaning: str
+    confidence: float = 0.0
+    evidence: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "meaning": self.meaning,
+            "confidence": self.confidence,
+            "evidence": self.evidence,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> KeyColumn:
+        return cls(
+            name=str(data.get("name", "")),
+            meaning=str(data.get("meaning", "")),
+            confidence=float(data.get("confidence", 0.0) or 0.0),
+            evidence=str(data.get("evidence", "") or ""),
+        )
+
+
+@dataclass
+class CardRecord:
+    """A table card as stored in the catalog."""
+
+    table: str
+    purpose: str | None = None
+    key_columns: list[KeyColumn] = field(default_factory=list)
+    common_usage: str | None = None
+    example_questions: list[str] = field(default_factory=list)
+    evidence: list[str] = field(default_factory=list)
+    confidence: float | None = None
+    review_status: str = CARD_STATUS_AI
+    reviewed_by: str | None = None
+    reviewed_at: datetime | None = None
+    confirmed_fields: list[str] = field(default_factory=list)
+    input_hash: str | None = None
+    generated_at: datetime | None = None
+    model: str | None = None
+
+    @property
+    def is_confirmed(self) -> bool:
+        return self.review_status == CARD_STATUS_CONFIRMED
+
+    @property
+    def is_rejected(self) -> bool:
+        return self.review_status == CARD_STATUS_REJECTED
+
+
+@dataclass
+class CardDraft:
+    """What the generator produces for one table (validated LLM output)."""
+
+    purpose: str
+    key_columns: list[KeyColumn]
+    common_usage: str
+    example_questions: list[str]
+    overall_confidence: float
+    evidence: list[str]
+
+
+# ---------------------------------------------------------------------------
+# Audit log (phase 4)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class AuditRecord:
+    """One audited agent event. Never carries SQL constants or sample values."""
+
+    user: str
+    question: str
+    occurred_at: datetime | None = None
+    generated_sql: str | None = None
+    validation_status: str | None = None
+    sample_confirmed: bool | None = None
+    sample_executed: bool = False
+    sample_row_count: int | None = None
+    details: dict[str, Any] = field(default_factory=dict)
+    id: int | None = None

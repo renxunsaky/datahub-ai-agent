@@ -7,13 +7,16 @@ stub.  Business code depends on this interface only.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Any
 
 from data_navigator.catalog.records import (
+    AuditRecord,
     BuildRunRecord,
+    CardDraft,
+    CardRecord,
     JoinEdgeRecord,
     LineageEdgeRecord,
     ParseFailureRecord,
@@ -116,6 +119,52 @@ class CatalogRepository(ABC):
     @abstractmethod
     def update_usage(self, usages: Iterable[TableUsage], *, reset_missing: bool = True) -> None:
         """Write usage statistics; tables not listed are reset to zero when asked."""
+
+    # -- table cards (phase 2) ---------------------------------------------------------
+
+    @abstractmethod
+    def get_card(self, table: str) -> CardRecord | None: ...
+
+    @abstractmethod
+    def list_cards(self, *, status: str | None = None) -> list[CardRecord]: ...
+
+    @abstractmethod
+    def save_generated_card(
+        self,
+        table: str,
+        draft: CardDraft,
+        *,
+        input_hash: str,
+        model: str | None,
+        generated_at: datetime,
+    ) -> CardRecord | None:
+        """Store an AI-generated card; fields a reviewer edited or confirmed are kept."""
+
+    @abstractmethod
+    def review_card(
+        self,
+        table: str,
+        *,
+        status: str,
+        reviewed_by: str,
+        reviewed_at: datetime,
+        edits: Mapping[str, Any] | None = None,
+    ) -> CardRecord | None:
+        """Confirm, reject or edit a card. Edited fields become ``confirmed_fields``."""
+
+    @abstractmethod
+    def set_column_descriptions(self, table: str, descriptions: Mapping[str, str]) -> None:
+        """Write AI descriptions for columns (never touches comments from metadata)."""
+
+    # -- audit (phase 4) -----------------------------------------------------------------
+
+    @abstractmethod
+    def add_audit_entry(self, entry: AuditRecord) -> int: ...
+
+    @abstractmethod
+    def list_audit_entries(
+        self, *, user: str | None = None, limit: int = 100
+    ) -> list[AuditRecord]: ...
 
     # -- build runs ------------------------------------------------------------------
 

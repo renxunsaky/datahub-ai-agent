@@ -1,0 +1,194 @@
+# Scripted LLM replies for the bundled fixtures (llm.provider: replay).
+#
+# For every call the first entry whose `match` occurs (case-insensitively) in the
+# latest user/tool message is used; entries are tried in order and `match: null`
+# is a catch-all. Each entry replays its `responses` in sequence and repeats the
+# last one. A response is `content` (text), `json` (an object) or `tool_calls`.
+#
+# Card generation prompts contain "name: <table>" in the <table> block, which is
+# what the first entries match. The remaining entries script the agent for the
+# questions of eval/golden_set.example.yaml.
+model: replay-demo
+embeddings: true
+
+entries:
+  # ---------------------------------------------------------------- table cards
+  - match: "name: cos.retail_ods.customer\n"
+    responses:
+      - json:
+          purpose: "Retail customer master data; one row per customer with segment and home branch."
+          key_columns:
+            - {name: customer_id, meaning: "Customer identifier, joins to account.customer_id", confidence: 0.95, evidence: "join edges"}
+            - {name: segment_code, meaning: "Customer segment (MASS, AFFLUENT, PRIVATE)", confidence: 0.9, evidence: "column comment"}
+            - {name: branch_id, meaning: "Home branch, joins to ref.branch", confidence: 0.85, evidence: "column comment, join edge"}
+          common_usage: "Joined to retail_ods.account on customer_id to aggregate balances per customer and segment."
+          example_questions:
+            - "How many customers are in each segment?"
+            - "Which branch do PRIVATE customers belong to?"
+          overall_confidence: 0.9
+          evidence: ["table comment", "representative queries", "join edges"]
+  - match: "name: cos.retail_ods.account\n"
+    responses:
+      - json:
+          purpose: "Daily snapshot of deposit and loan accounts with status and end-of-day balance; one row per account and snapshot date."
+          key_columns:
+            - {name: account_id, meaning: "Account identifier", confidence: 0.95, evidence: "join edges"}
+            - {name: customer_id, meaning: "Owning customer, joins to retail_ods.customer", confidence: 0.95, evidence: "join edges"}
+            - {name: balance, meaning: "End-of-day balance in account currency", confidence: 0.9, evidence: "column comment, aggregates"}
+            - {name: status, meaning: "OPEN, CLOSED or FROZEN", confidence: 0.9, evidence: "column comment, filters"}
+            - {name: dt, meaning: "Snapshot (partition) date; filter on it", confidence: 0.9, evidence: "column comment, filters"}
+          common_usage: "Filter on dt and status, join to customer on customer_id, sum balance."
+          example_questions:
+            - "What is the total balance per customer segment today?"
+            - "How many open accounts does each customer have?"
+          overall_confidence: 0.9
+          evidence: ["table comment", "representative queries"]
+  - match: "name: cos.retail_ods.transaction\n"
+    responses:
+      - json:
+          purpose: "Account-level transactions (debits and credits) with channel and merchant; one row per transaction."
+          key_columns:
+            - {name: txn_id, meaning: "Transaction identifier", confidence: 0.9, evidence: "name"}
+            - {name: account_id, meaning: "Account, joins to retail_ods.account", confidence: 0.95, evidence: "join edges"}
+            - {name: amount, meaning: "Signed amount in account currency", confidence: 0.9, evidence: "column comment"}
+            - {name: channel, meaning: "ATM, POS, MOBILE or BRANCH", confidence: 0.9, evidence: "column comment"}
+            - {name: txn_type, meaning: "DEBIT or CREDIT", confidence: 0.9, evidence: "column comment"}
+            - {name: dt, meaning: "Partition date", confidence: 0.9, evidence: "column comment"}
+          common_usage: "Filter on dt/txn_date and txn_type, group by channel, join to account on account_id."
+          example_questions:
+            - "What was the debit volume per channel last month?"
+          overall_confidence: 0.85
+          evidence: ["table comment", "representative queries"]
+  - match: "name: cos.cards_ods.card_transaction\n"
+    responses:
+      - json:
+          purpose: "Card authorisations and settlements; one row per card transaction."
+          key_columns:
+            - {name: card_id, meaning: "Card, joins to cards_ods.card", confidence: 0.95, evidence: "join edges"}
+            - {name: amount, meaning: "Transaction amount", confidence: 0.85, evidence: "aggregates"}
+            - {name: mcc, meaning: "Merchant category code", confidence: 0.9, evidence: "column comment"}
+            - {name: dt, meaning: "Partition date", confidence: 0.9, evidence: "column comment"}
+          common_usage: "Join to card on card_id, filter on dt, sum amount by card type or merchant."
+          example_questions:
+            - "What is the monthly card spend per card type?"
+          overall_confidence: 0.85
+          evidence: ["table comment", "representative queries"]
+  - match: "name: cos.cards_ods.card\n"
+    responses:
+      - json:
+          purpose: "Issued cards and their settlement account; one row per card."
+          key_columns:
+            - {name: card_id, meaning: "Card identifier", confidence: 0.95, evidence: "join edges"}
+            - {name: account_id, meaning: "Linked settlement account, joins to retail_ods.account", confidence: 0.95, evidence: "column comment, join edge"}
+            - {name: card_type, meaning: "DEBIT or CREDIT", confidence: 0.9, evidence: "column comment"}
+          common_usage: "Bridge between card transactions and retail accounts/customers."
+          example_questions:
+            - "How many cards does each customer hold?"
+          overall_confidence: 0.85
+          evidence: ["table comment", "join edges"]
+  - match: "name: cos.risk_dm.customer_risk_score\n"
+    responses:
+      - json:
+          purpose: "Latest probability-of-default score and rating per customer, written by the risk model job."
+          key_columns:
+            - {name: customer_id, meaning: "Customer, joins to retail_ods.customer", confidence: 0.95, evidence: "join edges, populating statement"}
+            - {name: pd_score, meaning: "Probability of default", confidence: 0.9, evidence: "column comment"}
+            - {name: rating, meaning: "Internal rating grade", confidence: 0.9, evidence: "column comment"}
+            - {name: score_date, meaning: "Date of the score", confidence: 0.85, evidence: "query usage"}
+          common_usage: "Take the latest score_date per customer; join to exposure or customer."
+          example_questions:
+            - "Which customers have the highest probability of default?"
+          overall_confidence: 0.85
+          evidence: ["table comment", "populating statement"]
+  - match: "name: cos.risk_dm.daily_exposure\n"
+    responses:
+      - json:
+          purpose: "Daily credit exposure per customer and product."
+          key_columns:
+            - {name: customer_id, meaning: "Customer", confidence: 0.9, evidence: "join edges"}
+            - {name: exposure_amount, meaning: "Exposure amount", confidence: 0.85, evidence: "name"}
+            - {name: as_of_date, meaning: "Snapshot date", confidence: 0.85, evidence: "populating statement"}
+          common_usage: "Left-joined to retail_dm.customer_daily_balance on customer_id and date."
+          example_questions:
+            - "What is the total exposure per customer today?"
+          overall_confidence: 0.75
+          evidence: ["populating statement", "representative queries"]
+  - match: "name: "
+    responses:
+      - json:
+          purpose: "Catalog table; purpose inferred from its name and columns only (low confidence)."
+          key_columns: []
+          common_usage: "unknown"
+          example_questions: []
+          overall_confidence: 0.3
+          evidence: ["columns"]
+
+  # ---------------------------------------------------------------- agent scripts
+  # Question 1: a confident SQL answer (search -> card -> validate -> final).
+  - match: "total balance per customer segment"
+    responses:
+      - tool_calls:
+          - {name: search_tables, arguments: {query: "customer segment balance account"}}
+      - tool_calls:
+          - {name: get_table_card, arguments: {table: "cos.retail_ods.account"}}
+          - {name: get_table_card, arguments: {table: "cos.retail_ods.customer"}}
+      - tool_calls:
+          - {name: get_join_path, arguments: {tables: ["cos.retail_ods.account", "cos.retail_ods.customer"]}}
+      - tool_calls:
+          - {name: validate_sql, arguments: {sql: "SELECT c.segment_code, SUM(a.balance) AS total_balance FROM cos.retail_ods.account a JOIN cos.retail_ods.customer c ON a.customer_id = c.customer_id WHERE a.status = 'OPEN' AND a.dt = CURRENT_DATE GROUP BY c.segment_code"}}
+      - tool_calls:
+          - name: final_answer
+            arguments:
+              mode: sql
+              sql: "SELECT c.segment_code, SUM(a.balance) AS total_balance FROM cos.retail_ods.account a JOIN cos.retail_ods.customer c ON a.customer_id = c.customer_id WHERE a.status = 'OPEN' AND a.dt = CURRENT_DATE GROUP BY c.segment_code"
+              tables: ["cos.retail_ods.account", "cos.retail_ods.customer"]
+              joins: ["account.customer_id = customer.customer_id (join graph)"]
+              assumptions: ["'today' = the latest snapshot dt = CURRENT_DATE", "only OPEN accounts"]
+              explanation: "Sums end-of-day balances of open accounts per customer segment."
+              confidence: 0.9
+              reasons: ["every concept maps to a column", "join path exists in the graph"]
+  # Question 2: ambiguous -> candidates mode.
+  - match: "risk of our customers"
+    responses:
+      - tool_calls:
+          - {name: search_tables, arguments: {query: "customer risk score exposure"}}
+      - tool_calls:
+          - name: final_answer
+            arguments:
+              mode: candidates
+              candidates:
+                - {table: "cos.risk_dm.customer_risk_score", why: "probability of default and rating per customer"}
+                - {table: "cos.risk_dm.daily_exposure", why: "credit exposure per customer and product"}
+              clarifying_questions: ["Do you mean the probability of default (rating) or the credit exposure amount?"]
+              explanation: "'Risk' can mean the PD score or the exposure amount; both exist."
+              confidence: 0.4
+              reasons: ["ambiguous metric"]
+  # Question 3: the first SQL has a typo, the model fixes it after the error.
+  - match: "debit volume per channel"
+    responses:
+      - tool_calls:
+          - {name: search_tables, arguments: {query: "transaction channel debit"}}
+      - tool_calls:
+          - {name: validate_sql, arguments: {sql: "SELECT channel, SUM(amount) AS total FROM cos.retail_ods.transaction WHERE txn_type = 'DEBIT' AND dt >= DATE '2026-10-01' GROUP BY chanel"}}
+      - tool_calls:
+          - {name: validate_sql, arguments: {sql: "SELECT channel, SUM(amount) AS total FROM cos.retail_ods.transaction WHERE txn_type = 'DEBIT' AND dt >= DATE '2026-10-01' GROUP BY channel"}}
+      - tool_calls:
+          - name: final_answer
+            arguments:
+              mode: sql
+              sql: "SELECT channel, SUM(amount) AS total FROM cos.retail_ods.transaction WHERE txn_type = 'DEBIT' AND dt >= DATE '2026-10-01' GROUP BY channel"
+              tables: ["cos.retail_ods.transaction"]
+              joins: []
+              assumptions: ["last month = since 2026-10-01"]
+              explanation: "Debit amounts per channel."
+              confidence: 0.85
+              reasons: ["single table, columns confirmed by the card"]
+  # Sample request after an answer.
+  - match: "show me a sample"
+    responses:
+      - tool_calls:
+          - {name: run_sample, arguments: {sql: "SELECT c.segment_code, SUM(a.balance) AS total_balance FROM cos.retail_ods.account a JOIN cos.retail_ods.customer c ON a.customer_id = c.customer_id WHERE a.status = 'OPEN' AND a.dt = CURRENT_DATE GROUP BY c.segment_code"}}
+      - content: "Here is the sample; it is shown in the table below."
+  - match: null
+    responses:
+      - content: "I can only answer questions about the data catalog. Please describe the data you need."

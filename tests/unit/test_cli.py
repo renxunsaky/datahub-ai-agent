@@ -65,3 +65,165 @@ def test_missing_config_file_is_an_error() -> None:
 def test_no_arguments_shows_help() -> None:
     result = runner.invoke(app, [])
     assert "build" in result.output and "refresh" in result.output
+
+
+# -- phase 2: cards, index, review ------------------------------------------------------
+
+
+def _replay_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    db = tmp_path / "catalog.db"
+    monkeypatch.setenv("DN_STORAGE__URL", f"sqlite:///{db}")
+    monkeypatch.setenv("DN_LLM__PROVIDER", "replay")
+    monkeypatch.setenv("DN_LLM__REPLAY_PATH", str(Path("eval/replay.example.yaml").resolve()))
+    return db
+
+
+def test_build_generates_cards_and_index_with_replay_llm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _replay_env(monkeypatch, tmp_path)
+    build = runner.invoke(app, ["--config", str(CONFIG), "build"])
+    assert build.exit_code == 0, build.output
+    assert "cards: 12 considered, 12 generated" in build.output
+    assert "search index (text + vector): 35 documents, 35 embedded" in build.output
+
+    again = runner.invoke(app, ["--config", str(CONFIG), "cards"])
+    assert again.exit_code == 0, again.output
+    assert "12 unchanged" in again.output
+
+    forced = runner.invoke(
+        app,
+        ["--config", str(CONFIG), "cards", "--force", "--tables", "cos.ref.branch", "--dry-run"],
+    )
+    assert forced.exit_code == 0 and "1 considered, 1 generated" in forced.output
+
+    listed = runner.invoke(app, ["--config", str(CONFIG), "review", "list"])
+    assert listed.exit_code == 0 and "cos.retail_ods.account\tai_inferred\t0.90" in listed.output
+
+    shown = runner.invoke(
+        app, ["--config", str(CONFIG), "review", "show", "cos.retail_ods.account"]
+    )
+    assert shown.exit_code == 0 and "key columns:" in shown.output and "- balance:" in shown.output
+
+    edited = runner.invoke(
+        app,
+        [
+            "--config",
+            str(CONFIG),
+            "review",
+            "edit",
+            "cos.retail_ods.account",
+            "--purpose",
+            "Human purpose",
+            "--example-questions",
+            '["Q?"]',
+            "--by",
+            "eve",
+        ],
+    )
+    assert edited.exit_code == 0, edited.output
+    assert "edited example_questions, purpose; status confirmed" in edited.output
+
+    regenerated = runner.invoke(app, ["--config", str(CONFIG), "cards", "--force"])
+    assert regenerated.exit_code == 0 and "1 reviewed (kept)" in regenerated.output
+    shown = runner.invoke(
+        app, ["--config", str(CONFIG), "review", "show", "cos.retail_ods.account"]
+    )
+    assert (
+        "purpose: Human purpose" in shown.output
+        and "confirmed fields: purpose, example_questions" in shown.output
+    )
+
+    rejected = runner.invoke(
+        app, ["--config", str(CONFIG), "review", "reject", "cos.ref.branch", "--by", "eve"]
+    )
+    assert rejected.exit_code == 0 and "rejected" in rejected.output
+    confirmed = runner.invoke(
+        app, ["--config", str(CONFIG), "review", "confirm", "cos.ref.product", "--by", "eve"]
+    )
+    assert confirmed.exit_code == 0
+    status_all = runner.invoke(app, ["--config", str(CONFIG), "review", "list", "--status", "all"])
+    assert (
+        "cos.ref.branch\trejected" in status_all.output
+        and "cos.ref.product\tconfirmed" in status_all.output
+    )
+    none = runner.invoke(app, ["--config", str(CONFIG), "review", "list", "--status", "bogus"])
+    assert none.output.strip() == "no cards"
+
+    index = runner.invoke(app, ["--config", str(CONFIG), "index"])
+    assert index.exit_code == 0 and "35 documents" in index.output
+
+    refreshed = runner.invoke(app, ["--config", str(CONFIG), "refresh"])
+    assert refreshed.exit_code == 0 and "cards:" in refreshed.output
+
+
+def test_review_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _replay_env(monkeypatch, tmp_path)
+    assert runner.invoke(app, ["--config", str(CONFIG), "build", "--skip-cards"]).exit_code == 0
+    missing = runner.invoke(app, ["--config", str(CONFIG), "review", "show", "cos.x.y"])
+    assert missing.exit_code == 1
+    no_reviewer = runner.invoke(
+        app, ["--config", str(CONFIG), "review", "confirm", "cos.ref.branch"]
+    )
+    assert no_reviewer.exit_code == 2
+    unknown = runner.invoke(
+        app, ["--config", str(CONFIG), "review", "confirm", "cos.x.y", "--by", "eve"]
+    )
+    assert unknown.exit_code == 1
+    unknown_reject = runner.invoke(
+        app, ["--config", str(CONFIG), "review", "reject", "cos.x.y", "--by", "eve"]
+    )
+    assert unknown_reject.exit_code == 1
+    nothing = runner.invoke(
+        app, ["--config", str(CONFIG), "review", "edit", "cos.ref.branch", "--by", "eve"]
+    )
+    assert nothing.exit_code == 2
+    bad_json = runner.invoke(
+        app,
+        [
+            "--config",
+            str(CONFIG),
+            "review",
+            "edit",
+            "cos.ref.branch",
+            "--by",
+            "eve",
+            "--key-columns",
+            "{",
+        ],
+    )
+    assert bad_json.exit_code == 2
+    not_list = runner.invoke(
+        app,
+        [
+            "--config",
+            str(CONFIG),
+            "review",
+            "edit",
+            "cos.ref.branch",
+            "--by",
+            "eve",
+            "--key-columns",
+            "{}",
+        ],
+    )
+    assert not_list.exit_code == 2
+    unknown_edit = runner.invoke(
+        app,
+        [
+            "--config",
+            str(CONFIG),
+            "review",
+            "edit",
+            "cos.x.y",
+            "--by",
+            "eve",
+            "--common-usage",
+            "u",
+            "--keep-status",
+        ],
+    )
+    assert unknown_edit.exit_code == 1
+    monkeypatch.setenv("DN_LLM__PROVIDER", "none")
+    no_llm = runner.invoke(app, ["--config", str(CONFIG), "cards"])
+    assert no_llm.exit_code == 2
