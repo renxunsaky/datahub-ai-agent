@@ -341,12 +341,6 @@ def _finalize_node(runtime: AgentRuntime) -> NodeFn:
             except ValidationError as error:
                 answer = FinalAnswer(explanation="the model produced a malformed final answer")
                 warnings.append(f"malformed final answer ({error.error_count()} field errors)")
-        warnings: list[str] = []
-        try:
-            answer = FinalAnswer.model_validate(final_call.arguments)
-        except ValidationError as error:
-            answer = FinalAnswer(explanation="the model produced a malformed final answer")
-            warnings.append(f"malformed final answer ({error.error_count()} field errors)")
 
         mode = answer.mode
         validation: dict[str, Any] | None = None
