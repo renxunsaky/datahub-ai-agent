@@ -1,0 +1,122 @@
+# Example configuration for Data Navigator.
+#
+# Copy to config.yaml and adjust. Secrets (passwords, tokens, API keys) are NOT
+# accepted here; they are read from environment variables / .env only (see
+# .env.example). Any key marked TODO(confirm) still needs confirmation from the
+# platform team (docs/open-questions.md).
+#
+# Every key can be overridden with an environment variable:
+#   DN_<SECTION>__<KEY>, e.g. DN_STORAGE__URL=sqlite:////data/catalog.db
+
+storage:
+  backend: sqlite            # sqlite | postgres (postgres is a stub for now)
+  url: sqlite:///./catalog.db
+
+starburst:
+  connection:
+    host: starburst.example.internal   # TODO(confirm)
+    port: 443
+    http_scheme: https
+    auth: basic                        # basic | jwt | none   TODO(confirm)
+    verify_ssl: true                   # true/false or a path to a CA bundle
+    request_timeout_s: 60
+    source_tag: data-navigator
+  builder:
+    user: data_navigator_builder       # TODO(confirm); password in DN_BUILDER_PASSWORD
+
+samples:
+  max_rows: 10                 # hard cap on sample rows; the LLM cannot change it
+  send_to_llm: false           # keep false until the security team approves
+  query_max_execution_time: 30s        # TODO(confirm)
+  session_properties:                  # TODO(confirm)
+    query_max_scan_physical_bytes: 1GB
+
+metadata:
+  source: fixture              # starburst | fixture
+  catalogs: [cos]              # TODO(confirm)
+  excluded_schemas: [information_schema, sys, pg_catalog]
+  column_comments: auto        # auto | information_schema | show_columns
+  fixture_dir: tests/fixtures/information_schema
+
+query_history:
+  source: jsonl                # starburst | jsonl
+  table: null                  # TODO(confirm) e.g. some_catalog.some_schema.query_history
+  columns:                     # TODO(confirm) column names in that table
+    query_id: query_id
+    query_text: query
+    user: user
+    state: state
+    started_at: created
+    ended_at: end
+    catalog: catalog
+    schema: schema
+  success_states: [FINISHED]
+  window_days: 3650            # fixtures are dated; ~90 is a sensible production value
+  retention_days: null         # TODO(confirm)
+  jsonl_path: tests/fixtures/query_history/queries.jsonl
+
+sql_files:
+  source: local                # git | local
+  repo_url: null               # TODO(confirm) https://gitlab.example.internal/data/airflow.git
+  branch: main
+  clone_dir: .cache/airflow-repo
+  git_username: oauth2
+  include_dirs: [src, automation]
+  extensions: [.sql]
+  local_path: tests/fixtures/repo
+  default_catalog: null        # TODO(confirm) catalog assumed for schema.table names in files
+  default_schema: null
+
+template:
+  jinja: true                  # TODO(confirm) template syntax used in .sql files
+  extra_patterns:
+    - '\$\{[^}]*\}'
+    - '%\([A-Za-z_][A-Za-z0-9_]*\)s'
+  placeholder: dn_tpl_var
+
+analysis:
+  weight_repo_file: 3.0
+  weight_repeated_query: 2.0
+  weight_single_query: 1.0
+  repeated_query_threshold: 2
+  join_key_min_count: 2
+  filter_min_count: 2
+  ownership_rules:             # TODO(confirm) how owning teams are determined
+    - pattern: '^(?P<team>[a-z0-9]+)_'   # retail_ods -> retail, risk_dm -> risk, ...
+      applies_to: schema
+    - pattern: '^ref$'                   # literal team for the reference-data schema
+      applies_to: schema
+      team: data_platform
+
+teams:
+  source: config               # TODO(confirm) authoritative user -> team source
+  mapping:                     # users of the bundled fixtures
+    alice: retail
+    bob: retail
+    carol: risk
+    dave: cards
+    eve: data_platform
+  default_team: null
+
+llm:
+  base_url: null               # REQUIRED before phase 2; must point at internal LLMaaS
+  model: null                  # TODO(confirm)
+  embedding_model: null        # TODO(confirm); null disables vector search
+  timeout_s: 60
+  max_retries: 3
+  max_concurrency: 4
+  requests_per_minute: 60      # TODO(confirm)
+
+agent:
+  max_tool_steps: 10
+  max_sql_retries: 3
+  search_limit: 8
+
+cards:
+  top_n_tables: 200
+  max_queries_per_table: 5
+  max_context_chars: 12000
+  max_generation_attempts: 3
+
+audit:
+  path: audit.jsonl
