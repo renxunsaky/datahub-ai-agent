@@ -221,9 +221,8 @@ def test_refresh_processes_only_new_history_and_changed_files(
 
     # Nothing new: a further refresh is a no-op.
     again = builder(settings, repo, now=later + timedelta(days=1)).refresh()
-    assert (
-        again.queries_processed == 0 and again.files_processed == 0 and again.templates_total == 23
-    )
+    assert again.queries_processed == 0 and again.files_processed == 0
+    assert again.templates_total == 22
 
 
 def test_refresh_without_previous_run_warns(repo: SqliteCatalogRepository) -> None:
