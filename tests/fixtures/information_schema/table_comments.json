@@ -1,0 +1,62 @@
+[
+  {
+    "catalog_name": "cos",
+    "schema_name": "retail_ods",
+    "table_name": "customer",
+    "comment": "Retail customer master data (one row per customer)"
+  },
+  {
+    "catalog_name": "cos",
+    "schema_name": "retail_ods",
+    "table_name": "account",
+    "comment": "Deposit and loan accounts"
+  },
+  {
+    "catalog_name": "cos",
+    "schema_name": "retail_ods",
+    "table_name": "transaction",
+    "comment": "Account transactions"
+  },
+  {
+    "catalog_name": "cos",
+    "schema_name": "retail_dm",
+    "table_name": "customer_daily_balance",
+    "comment": "Daily aggregated balance per customer"
+  },
+  {
+    "catalog_name": "cos",
+    "schema_name": "retail_dm",
+    "table_name": "v_active_customer",
+    "comment": "Customers with at least one open account"
+  },
+  {
+    "catalog_name": "cos",
+    "schema_name": "cards_ods",
+    "table_name": "card",
+    "comment": "Issued cards"
+  },
+  {
+    "catalog_name": "cos",
+    "schema_name": "cards_ods",
+    "table_name": "card_transaction",
+    "comment": "Card authorisations and settlements"
+  },
+  {
+    "catalog_name": "cos",
+    "schema_name": "risk_dm",
+    "table_name": "customer_risk_score",
+    "comment": "Latest PD score per customer"
+  },
+  {
+    "catalog_name": "cos",
+    "schema_name": "ref",
+    "table_name": "branch",
+    "comment": "Branch reference data"
+  },
+  {
+    "catalog_name": "cos",
+    "schema_name": "ref",
+    "table_name": "product",
+    "comment": "Product reference data"
+  }
+]

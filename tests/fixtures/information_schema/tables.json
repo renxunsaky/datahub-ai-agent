@@ -1,0 +1,74 @@
+[
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "customer",
+    "table_type": "BASE TABLE"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "account",
+    "table_type": "BASE TABLE"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "transaction",
+    "table_type": "BASE TABLE"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_dm",
+    "table_name": "customer_daily_balance",
+    "table_type": "BASE TABLE"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_dm",
+    "table_name": "customer_monthly_summary",
+    "table_type": "BASE TABLE"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_dm",
+    "table_name": "v_active_customer",
+    "table_type": "VIEW"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "cards_ods",
+    "table_name": "card",
+    "table_type": "BASE TABLE"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "cards_ods",
+    "table_name": "card_transaction",
+    "table_type": "BASE TABLE"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "risk_dm",
+    "table_name": "customer_risk_score",
+    "table_type": "BASE TABLE"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "risk_dm",
+    "table_name": "daily_exposure",
+    "table_type": "BASE TABLE"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "ref",
+    "table_name": "branch",
+    "table_type": "BASE TABLE"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "ref",
+    "table_name": "product",
+    "table_type": "BASE TABLE"
+  }
+]

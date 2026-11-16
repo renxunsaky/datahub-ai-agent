@@ -1,0 +1,614 @@
+[
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "customer",
+    "column_name": "customer_id",
+    "ordinal_position": 1,
+    "data_type": "bigint",
+    "comment": "Customer identifier"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "customer",
+    "column_name": "customer_name",
+    "ordinal_position": 2,
+    "data_type": "varchar",
+    "comment": "Full name"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "customer",
+    "column_name": "birth_date",
+    "ordinal_position": 3,
+    "data_type": "date",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "customer",
+    "column_name": "mobile_phone",
+    "ordinal_position": 4,
+    "data_type": "varchar",
+    "comment": "Mobile phone number"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "customer",
+    "column_name": "segment_code",
+    "ordinal_position": 5,
+    "data_type": "varchar",
+    "comment": "Customer segment: MASS, AFFLUENT or PRIVATE"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "customer",
+    "column_name": "branch_id",
+    "ordinal_position": 6,
+    "data_type": "integer",
+    "comment": "Home branch, see ref.branch"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "customer",
+    "column_name": "open_date",
+    "ordinal_position": 7,
+    "data_type": "date",
+    "comment": "Relationship start date"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "customer",
+    "column_name": "update_ts",
+    "ordinal_position": 8,
+    "data_type": "timestamp(3)",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "account",
+    "column_name": "account_id",
+    "ordinal_position": 1,
+    "data_type": "bigint",
+    "comment": "Account identifier"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "account",
+    "column_name": "customer_id",
+    "ordinal_position": 2,
+    "data_type": "bigint",
+    "comment": "Owning customer"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "account",
+    "column_name": "product_code",
+    "ordinal_position": 3,
+    "data_type": "varchar",
+    "comment": "Product, see ref.product"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "account",
+    "column_name": "currency",
+    "ordinal_position": 4,
+    "data_type": "varchar(3)",
+    "comment": "ISO currency code"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "account",
+    "column_name": "open_date",
+    "ordinal_position": 5,
+    "data_type": "date",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "account",
+    "column_name": "close_date",
+    "ordinal_position": 6,
+    "data_type": "date",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "account",
+    "column_name": "status",
+    "ordinal_position": 7,
+    "data_type": "varchar",
+    "comment": "OPEN, CLOSED or FROZEN"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "account",
+    "column_name": "balance",
+    "ordinal_position": 8,
+    "data_type": "decimal(18,2)",
+    "comment": "End-of-day balance"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "account",
+    "column_name": "dt",
+    "ordinal_position": 9,
+    "data_type": "date",
+    "comment": "Partition date (snapshot)"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "transaction",
+    "column_name": "txn_id",
+    "ordinal_position": 1,
+    "data_type": "bigint",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "transaction",
+    "column_name": "account_id",
+    "ordinal_position": 2,
+    "data_type": "bigint",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "transaction",
+    "column_name": "txn_date",
+    "ordinal_position": 3,
+    "data_type": "date",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "transaction",
+    "column_name": "txn_ts",
+    "ordinal_position": 4,
+    "data_type": "timestamp(3)",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "transaction",
+    "column_name": "amount",
+    "ordinal_position": 5,
+    "data_type": "decimal(18,2)",
+    "comment": "Signed amount in account currency"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "transaction",
+    "column_name": "currency",
+    "ordinal_position": 6,
+    "data_type": "varchar(3)",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "transaction",
+    "column_name": "channel",
+    "ordinal_position": 7,
+    "data_type": "varchar",
+    "comment": "ATM, POS, MOBILE or BRANCH"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "transaction",
+    "column_name": "merchant_id",
+    "ordinal_position": 8,
+    "data_type": "varchar",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "transaction",
+    "column_name": "txn_type",
+    "ordinal_position": 9,
+    "data_type": "varchar",
+    "comment": "DEBIT or CREDIT"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_ods",
+    "table_name": "transaction",
+    "column_name": "dt",
+    "ordinal_position": 10,
+    "data_type": "date",
+    "comment": "Partition date"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_dm",
+    "table_name": "customer_daily_balance",
+    "column_name": "customer_id",
+    "ordinal_position": 1,
+    "data_type": "bigint",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_dm",
+    "table_name": "customer_daily_balance",
+    "column_name": "as_of_date",
+    "ordinal_position": 2,
+    "data_type": "date",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_dm",
+    "table_name": "customer_daily_balance",
+    "column_name": "total_balance",
+    "ordinal_position": 3,
+    "data_type": "decimal(18,2)",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_dm",
+    "table_name": "customer_daily_balance",
+    "column_name": "account_count",
+    "ordinal_position": 4,
+    "data_type": "integer",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_dm",
+    "table_name": "customer_monthly_summary",
+    "column_name": "customer_id",
+    "ordinal_position": 1,
+    "data_type": "bigint",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_dm",
+    "table_name": "customer_monthly_summary",
+    "column_name": "month",
+    "ordinal_position": 2,
+    "data_type": "varchar(7)",
+    "comment": "YYYY-MM"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_dm",
+    "table_name": "customer_monthly_summary",
+    "column_name": "txn_count",
+    "ordinal_position": 3,
+    "data_type": "bigint",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_dm",
+    "table_name": "customer_monthly_summary",
+    "column_name": "txn_amount",
+    "ordinal_position": 4,
+    "data_type": "decimal(18,2)",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_dm",
+    "table_name": "customer_monthly_summary",
+    "column_name": "segment_code",
+    "ordinal_position": 5,
+    "data_type": "varchar",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_dm",
+    "table_name": "v_active_customer",
+    "column_name": "customer_id",
+    "ordinal_position": 1,
+    "data_type": "bigint",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_dm",
+    "table_name": "v_active_customer",
+    "column_name": "segment_code",
+    "ordinal_position": 2,
+    "data_type": "varchar",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "retail_dm",
+    "table_name": "v_active_customer",
+    "column_name": "total_balance",
+    "ordinal_position": 3,
+    "data_type": "decimal(18,2)",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "cards_ods",
+    "table_name": "card",
+    "column_name": "card_id",
+    "ordinal_position": 1,
+    "data_type": "bigint",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "cards_ods",
+    "table_name": "card",
+    "column_name": "account_id",
+    "ordinal_position": 2,
+    "data_type": "bigint",
+    "comment": "Linked settlement account"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "cards_ods",
+    "table_name": "card",
+    "column_name": "card_type",
+    "ordinal_position": 3,
+    "data_type": "varchar",
+    "comment": "DEBIT or CREDIT"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "cards_ods",
+    "table_name": "card",
+    "column_name": "issue_date",
+    "ordinal_position": 4,
+    "data_type": "date",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "cards_ods",
+    "table_name": "card",
+    "column_name": "expiry_date",
+    "ordinal_position": 5,
+    "data_type": "date",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "cards_ods",
+    "table_name": "card",
+    "column_name": "status",
+    "ordinal_position": 6,
+    "data_type": "varchar",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "cards_ods",
+    "table_name": "card_transaction",
+    "column_name": "card_txn_id",
+    "ordinal_position": 1,
+    "data_type": "bigint",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "cards_ods",
+    "table_name": "card_transaction",
+    "column_name": "card_id",
+    "ordinal_position": 2,
+    "data_type": "bigint",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "cards_ods",
+    "table_name": "card_transaction",
+    "column_name": "txn_ts",
+    "ordinal_position": 3,
+    "data_type": "timestamp(3)",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "cards_ods",
+    "table_name": "card_transaction",
+    "column_name": "amount",
+    "ordinal_position": 4,
+    "data_type": "decimal(18,2)",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "cards_ods",
+    "table_name": "card_transaction",
+    "column_name": "mcc",
+    "ordinal_position": 5,
+    "data_type": "varchar(4)",
+    "comment": "Merchant category code"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "cards_ods",
+    "table_name": "card_transaction",
+    "column_name": "merchant_name",
+    "ordinal_position": 6,
+    "data_type": "varchar",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "cards_ods",
+    "table_name": "card_transaction",
+    "column_name": "dt",
+    "ordinal_position": 7,
+    "data_type": "date",
+    "comment": "Partition date"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "risk_dm",
+    "table_name": "customer_risk_score",
+    "column_name": "customer_id",
+    "ordinal_position": 1,
+    "data_type": "bigint",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "risk_dm",
+    "table_name": "customer_risk_score",
+    "column_name": "score_date",
+    "ordinal_position": 2,
+    "data_type": "date",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "risk_dm",
+    "table_name": "customer_risk_score",
+    "column_name": "pd_score",
+    "ordinal_position": 3,
+    "data_type": "double",
+    "comment": "Probability of default"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "risk_dm",
+    "table_name": "customer_risk_score",
+    "column_name": "rating",
+    "ordinal_position": 4,
+    "data_type": "varchar(3)",
+    "comment": "Internal rating grade"
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "risk_dm",
+    "table_name": "customer_risk_score",
+    "column_name": "model_version",
+    "ordinal_position": 5,
+    "data_type": "varchar",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "risk_dm",
+    "table_name": "daily_exposure",
+    "column_name": "as_of_date",
+    "ordinal_position": 1,
+    "data_type": "date",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "risk_dm",
+    "table_name": "daily_exposure",
+    "column_name": "customer_id",
+    "ordinal_position": 2,
+    "data_type": "bigint",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "risk_dm",
+    "table_name": "daily_exposure",
+    "column_name": "exposure_amount",
+    "ordinal_position": 3,
+    "data_type": "decimal(18,2)",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "risk_dm",
+    "table_name": "daily_exposure",
+    "column_name": "product_code",
+    "ordinal_position": 4,
+    "data_type": "varchar",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "ref",
+    "table_name": "branch",
+    "column_name": "branch_id",
+    "ordinal_position": 1,
+    "data_type": "integer",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "ref",
+    "table_name": "branch",
+    "column_name": "branch_name",
+    "ordinal_position": 2,
+    "data_type": "varchar",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "ref",
+    "table_name": "branch",
+    "column_name": "region",
+    "ordinal_position": 3,
+    "data_type": "varchar",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "ref",
+    "table_name": "branch",
+    "column_name": "city",
+    "ordinal_position": 4,
+    "data_type": "varchar",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "ref",
+    "table_name": "product",
+    "column_name": "product_code",
+    "ordinal_position": 1,
+    "data_type": "varchar",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "ref",
+    "table_name": "product",
+    "column_name": "product_name",
+    "ordinal_position": 2,
+    "data_type": "varchar",
+    "comment": null
+  },
+  {
+    "table_catalog": "cos",
+    "table_schema": "ref",
+    "table_name": "product",
+    "column_name": "category",
+    "ordinal_position": 3,
+    "data_type": "varchar",
+    "comment": "DEPOSIT, LOAN or CARD"
+  }
+]
