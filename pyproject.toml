@@ -1,0 +1,109 @@
+[project]
+name = "data-navigator"
+version = "0.1.0"
+description = "Data Navigator Agent: builds a lightweight data catalog from Starburst metadata and SQL history, then turns natural-language questions into read-only SQL."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+dependencies = [
+    "sqlglot>=27",
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "pydantic>=2.7",
+    "pydantic-settings[yaml]>=2.3",
+    "typer>=0.12",
+    "trino>=0.330",
+    "pyyaml>=6",
+]
+
+[project.scripts]
+data-navigator = "data_navigator.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "hypothesis>=6",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "import-linter>=2",
+    "types-PyYAML",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/data_navigator"]
+
+# ---------------------------------------------------------------------------
+# Lint / type-check / test configuration
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "N", "RUF", "PTH", "C4", "PIE", "ISC", "RET"]
+ignore = [
+    "RUF012", # mutable class attributes: pydantic/SQLAlchemy declarations trigger this
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test data contains long SQL strings and deliberately odd characters (e.g. NBSP).
+"tests/**" = ["E501", "RUF001"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["data_navigator"]
+
+[tool.mypy]
+python_version = "3.11"
+mypy_path = "src"
+strict = true
+warn_unreachable = true
+pretty = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = ["trino.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -p no:cacheprovider"
+filterwarnings = ["error::DeprecationWarning:data_navigator.*"]
+
+[tool.coverage.run]
+branch = true
+source = ["data_navigator"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+
+# ---------------------------------------------------------------------------
+# Architecture contracts (checked by `lint-imports` and tests/unit/test_architecture.py)
+# ---------------------------------------------------------------------------
+
+[tool.importlinter]
+root_package = "data_navigator"
+
+[[tool.importlinter.contracts]]
+name = "The agent and UI must never reach the builder connection or the catalog-building pipeline"
+type = "forbidden"
+source_modules = ["data_navigator.agent", "data_navigator.ui"]
+forbidden_modules = [
+    "data_navigator.starburst.builder_client",
+    "data_navigator.starburst.whitelist",
+    "data_navigator.sources",
+    "data_navigator.pipeline",
+]
+
+[[tool.importlinter.contracts]]
+name = "The end-user client must not depend on the builder client"
+type = "forbidden"
+source_modules = ["data_navigator.starburst.end_user_client"]
+forbidden_modules = ["data_navigator.starburst.builder_client"]

@@ -1,0 +1,32 @@
+# Secrets: never commit local environment files
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+
+# Tooling caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+.coverage
+htmlcov/
+
+# Local data: catalog database, cloned repositories, audit log
+*.db
+*.db-journal
+.cache/
+audit.jsonl
+catalog.db
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
