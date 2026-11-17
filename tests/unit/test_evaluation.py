@@ -25,12 +25,13 @@ def test_recall_at_k() -> None:
     assert recall_at_k([], ["a"]) is None
 
 
-def test_golden_set_loads() -> None:
+def test_golden_set_loads(tmp_path: Path) -> None:
     cases = load_golden_set(GOLDEN)
     assert [c.id for c in cases] == ["balance_by_segment", "ambiguous_risk", "debit_by_channel"]
     assert cases[0].expected_mode == "sql" and cases[1].expected_mode == "candidates"
     assert cases[1].expected_sql is None and cases[0].expected_sql is not None
-    bad = Path("tests/fixtures/repo/docs/notes.sql")
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("foo: bar\n")
     with pytest.raises(ValueError, match="expected a list"):
         load_golden_set(bad)
 

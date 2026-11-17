@@ -100,7 +100,7 @@ def test_get_join_path(enriched_repo: SqliteCatalogRepository) -> None:
     assert tools.get_join_path([ACCOUNT])["note"] == "one table: no join needed"
     assert "unknown tables" in tools.get_join_path([ACCOUNT, "cos.x.y"])["error"]
     assert "error" in tools.get_join_path([])
-    assert "error" in tools.get_join_path("cos.retail_ods.account")  # type: ignore[arg-type]
+    assert "error" in tools.get_join_path("cos.retail_ods.account")
 
 
 def test_similar_queries_filters_by_access(enriched_repo: SqliteCatalogRepository) -> None:
@@ -179,7 +179,7 @@ def test_call_dispatch_returns_errors_as_text(enriched_repo: SqliteCatalogReposi
     def explode(**kwargs: Any) -> dict[str, Any]:
         raise RuntimeError("boom")
 
-    tools.search_tables = explode  # type: ignore[method-assign]
+    tools.search_tables = explode  # type: ignore[assignment]
     assert (
         tools.call("search_tables", {"query": "x"})["error"] == "search_tables failed: RuntimeError"
     )

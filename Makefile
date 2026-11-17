@@ -7,15 +7,15 @@ install:
 	$(UV) sync
 
 lint:
-	$(UV) run ruff check src tests
-	$(UV) run ruff format --check src tests
+	$(UV) run ruff check src tests eval
+	$(UV) run ruff format --check src tests eval
 
 format:
-	$(UV) run ruff check --fix src tests
-	$(UV) run ruff format src tests
+	$(UV) run ruff check --fix src tests eval
+	$(UV) run ruff format src tests eval
 
 type:
-	$(UV) run mypy src tests
+	$(UV) run mypy src tests eval
 
 arch:
 	$(UV) run lint-imports

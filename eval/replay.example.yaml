@@ -3,7 +3,8 @@
 # For every call the first entry whose `match` occurs (case-insensitively) in the
 # latest user/tool message is used; entries are tried in order and `match: null`
 # is a catch-all. Each entry replays its `responses` in sequence and repeats the
-# last one. A response is `content` (text), `json` (an object) or `tool_calls`.
+# last one (`cycle: true` starts over instead). A response is `content` (text),
+# `json` (an object) or `tool_calls`.
 #
 # Card generation prompts contain "name: <table>" in the <table> block, which is
 # what the first entries match. The remaining entries script the agent for the
@@ -185,6 +186,7 @@ entries:
               reasons: ["single table, columns confirmed by the card"]
   # Sample request after an answer.
   - match: "show me a sample"
+    cycle: true
     responses:
       - tool_calls:
           - {name: run_sample, arguments: {sql: "SELECT c.segment_code, SUM(a.balance) AS total_balance FROM cos.retail_ods.account a JOIN cos.retail_ods.customer c ON a.customer_id = c.customer_id WHERE a.status = 'OPEN' AND a.dt = CURRENT_DATE GROUP BY c.segment_code"}}

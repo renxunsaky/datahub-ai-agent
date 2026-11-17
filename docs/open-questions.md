@@ -33,10 +33,12 @@ exact spots.
    (`sql_files.default_catalog/default_schema`); unique suffix matching against
    the catalog is used when they are not set.
 
-## LLMaaS (needed from phase 2)
+## LLMaaS
 
 8. **Endpoint** – `llm.base_url` (no default by design), whether it is
-   OpenAI-compatible, available model names, whether an embedding model exists
+   OpenAI-compatible (`/chat/completions` with `tools`, `/embeddings`), whether
+   it honours `response_format: {"type": "json_object"}` (`llm.json_mode`),
+   available model names, whether an embedding model exists
    (`llm.embedding_model`; without it search falls back to full-text only), and
    rate limits (`llm.requests_per_minute`, `llm.max_concurrency`).
 9. **Data classification** – which data may be sent to LLMaaS. This decides
@@ -64,5 +66,20 @@ exact spots.
 - `build` replaces the derived data (patterns, files, join graph, lineage) so
   that repeated builds stay idempotent; confirmed owners and reviewed card
   fields are preserved.
-- Phase 0 did not implement the `TextIndex` / `VectorIndex` SQLite classes,
-  only their protocols; they belong to phase 2 together with the cards.
+- The SQLite FTS5 and vector tables (`dn_text_index`, `dn_vector_index`) live
+  in the catalog database but are created outside Alembic (virtual tables are
+  SQLite-specific).
+- Added `starburst.end_user.source: fixture`: a simulated end-user connection
+  (schema-checked `EXPLAIN`, static access list, synthetic sample rows) so the
+  agent can be exercised without a cluster. Default is `fixture`, like the
+  other sources; production sets `starburst`.
+- Added `llm.provider: replay`: a YAML-scripted model used by the tests, the
+  demo configuration and the offline evaluation run.
+- `final_answer` is a tool the model calls (structured output) rather than a
+  JSON reply; the code, not the model, decides the final mode.
+- `agent.history_window` trims the conversation sent to the model.
+- The evaluation logic lives in `data_navigator/evaluation.py`;
+  `eval/run_eval.py` is a thin entry point so the harness is unit-tested.
+- Streamlit is started through `data-navigator ui` (a subprocess running
+  `streamlit run`), so the page reads the same `--config`.
+- The Trino container integration test (optional in the task) was not built.

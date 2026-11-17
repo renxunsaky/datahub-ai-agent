@@ -28,17 +28,22 @@ class ReplayEntry:
     match: str | None
     responses: list[ChatResponse]
     cursor: int = 0
+    # When exhausted: repeat the last response (``loop``), start over (``cycle``) or fail.
     loop: bool = True
+    cycle: bool = False
 
     def next_response(self) -> ChatResponse:
         if not self.responses:
             msg = "replay entry has no responses"
             raise LLMError(msg)
         if self.cursor >= len(self.responses):
-            if not self.loop:
+            if self.cycle:
+                self.cursor = 0
+            elif not self.loop:
                 msg = "replay entry exhausted"
                 raise LLMError(msg)
-            self.cursor = len(self.responses) - 1
+            else:
+                self.cursor = len(self.responses) - 1
         response = self.responses[self.cursor]
         self.cursor += 1
         return response
@@ -95,6 +100,7 @@ class ReplayLLM:
                 match=item.get("match"),
                 responses=[response_from_dict(r) for r in item.get("responses", [])],
                 loop=bool(item.get("loop", True)),
+                cycle=bool(item.get("cycle", False)),
             )
             for item in raw.get("entries", [])
         ]

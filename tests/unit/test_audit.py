@@ -14,7 +14,8 @@ def test_deidentify_sql_strips_constants() -> None:
     text = deidentify_sql("SELECT a FROM cos.s.t WHERE phone = '+3361234' AND x = 42")
     assert text is not None and "+3361234" not in text and "42" not in text
     assert deidentify_sql(None) is None and deidentify_sql("") is None
-    assert deidentify_sql("not sql at all ((").startswith("<unparseable sql ")
+    unparseable = deidentify_sql("not sql at all ((")
+    assert unparseable is not None and unparseable.startswith("<unparseable sql ")
 
 
 def test_audit_logger_writes_db_and_jsonl(tmp_path: Path) -> None:

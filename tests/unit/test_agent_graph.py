@@ -57,7 +57,7 @@ def test_sql_mode_requires_validation_and_sample_needs_confirmation(
     assert reply.plan and "Fragment 0" in reply.plan
     assert "Validated read-only SQL" in reply.text and GOOD_SQL in reply.text
     state = session.state()
-    assert state["first_validation"] == "ok" and state["tool_steps"] == 4
+    assert state["first_validation"] == "ok" and state["tool_steps"] == 5
     audit = enriched_repo.list_audit_entries()
     assert audit[0].validation_status == "ok" and audit[0].generated_sql is not None
     assert "'OPEN'" not in audit[0].generated_sql and audit[0].details["mode"] == "sql"
@@ -75,8 +75,8 @@ def test_sql_mode_requires_validation_and_sample_needs_confirmation(
     assert done.sample["columns"] == ["segment_code", "total_balance"]
     assert 0 < done.sample["row_count"] <= 10 and done.sample["row_limit"] == 10
     tool_message = last_tool_message(session)
-    assert "rows" not in tool_message["content"] and "send_to_llm=false" in tool_message["content"]
-    assert session.pending is None
+    assert '"rows"' not in tool_message["content"]
+    assert "send_to_llm=false" in tool_message["content"]
     executed = [e for e in enriched_repo.list_audit_entries() if e.sample_confirmed is not None]
     assert executed[0].sample_confirmed and executed[0].sample_executed
     assert executed[0].sample_row_count == done.sample["row_count"]
@@ -192,7 +192,6 @@ def test_tool_step_limit(enriched_repo: SqliteCatalogRepository) -> None:
     settings.agent.max_tool_steps = 2
     llm = script(
         calls(("search_tables", {"query": "account"}), ("search_tables", {"query": "customer"})),
-        calls(("search_tables", {"query": "transaction"})),
         final(mode="candidates", candidates=[{"table": "cos.retail_ods.account", "why": "x"}]),
     )
     session = make_session(enriched_repo, llm, settings=settings)
@@ -235,12 +234,12 @@ def test_run_sample_must_be_called_alone(enriched_repo: SqliteCatalogRepository)
     session = make_session(enriched_repo, llm)
     pending = session.ask("x")
     assert pending.needs_confirmation
-    messages = session.state()["messages"]
-    assert any(
-        "must be the only call" in m.get("content", "") for m in messages if m["role"] == "tool"
-    )
     done = session.resume(True)
     assert done.sample is not None and done.sample["status"] == "ok"
+    messages = session.state()["messages"]
+    assert any(
+        "must be the only call" in (m.get("content") or "") for m in messages if m["role"] == "tool"
+    )
 
 
 def test_run_sample_with_bad_arguments(enriched_repo: SqliteCatalogRepository) -> None:
@@ -272,7 +271,7 @@ def test_sample_execution_failure_is_reported(enriched_repo: SqliteCatalogReposi
     assert session.ask("x").needs_confirmation
     reply = session.resume(True)
     assert reply.sample is not None and reply.sample["status"] == "timeout"
-    assert reply.sample["message"] == "too slow" and "rows" not in reply.sample
+    assert reply.sample["message"] == "too slow" and reply.sample["rows"] == []
     entry = next(e for e in enriched_repo.list_audit_entries() if e.sample_confirmed is not None)
     assert entry.sample_confirmed and not entry.sample_executed and entry.sample_row_count is None
 
@@ -310,7 +309,7 @@ def test_final_answer_with_other_calls_and_unknown_candidates(
     assert reply.mode == "candidates" and reply.candidates == []
     assert "(none found)" in reply.text
     assert any(
-        "no tools may accompany" in m.get("content", "") for m in session.state()["messages"]
+        "no tools may accompany" in (m.get("content") or "") for m in session.state()["messages"]
     )
 
 

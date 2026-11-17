@@ -227,3 +227,78 @@ def test_review_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DN_LLM__PROVIDER", "none")
     no_llm = runner.invoke(app, ["--config", str(CONFIG), "cards"])
     assert no_llm.exit_code == 2
+
+
+# -- phases 3-4: chat, audit, ui -------------------------------------------------------
+
+
+def _agent_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _replay_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("DN_END_USER_USER", "alice")
+    monkeypatch.setenv("DN_AUDIT__PATH", str(tmp_path / "audit.jsonl"))
+    assert runner.invoke(app, ["--config", str(CONFIG), "build"]).exit_code == 0
+
+
+def test_chat_flow_with_sample_confirmation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _agent_env(monkeypatch, tmp_path)
+    script = "\n".join(
+        [
+            "What is the total balance per customer segment today?",
+            "show me a sample",
+            "n",
+            "show me a sample",
+            "y",
+            "",
+            "Show me the risk of our customers",
+            "exit",
+        ]
+    )
+    result = runner.invoke(app, ["--config", str(CONFIG), "chat"], input=script + "\n")
+    assert result.exit_code == 0, result.output
+    out = result.output
+    assert "chat as alice" in out and "Validated read-only SQL" in out
+    assert out.count("Allow reading at most 10 sample row(s)?") == 2
+    assert "sample (" in out and "segment_code | total_balance" in out
+    assert "Possible tables:" in out and "access:" in out
+    assert (tmp_path / "audit.jsonl").exists()
+
+    audit = runner.invoke(
+        app, ["--config", str(CONFIG), "audit", "--user", "alice", "--limit", "10"]
+    )
+    assert audit.exit_code == 0 and "sample confirmed=True executed=True" in audit.output
+    assert "sample confirmed=False" in audit.output and "'OPEN'" not in audit.output
+    empty = runner.invoke(app, ["--config", str(CONFIG), "audit", "--user", "nobody"])
+    assert empty.output.strip() == "no audit entries"
+
+
+def test_chat_eof_and_missing_identity(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _agent_env(monkeypatch, tmp_path)
+    eof = runner.invoke(app, ["--config", str(CONFIG), "chat", "--user", "bob"], input="")
+    assert eof.exit_code == 0 and "chat as bob" in eof.output
+    monkeypatch.delenv("DN_END_USER_USER")
+    missing = runner.invoke(app, ["--config", str(CONFIG), "chat"], input="exit\n")
+    assert missing.exit_code == 2 and "DN_END_USER_USER" in missing.output
+
+
+def test_ui_command_launches_streamlit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _replay_env(monkeypatch, tmp_path)
+    captured: dict[str, object] = {}
+
+    class Done:
+        returncode = 0
+
+    def fake_run(command: list[str], env: dict[str, str], check: bool) -> Done:
+        captured["command"] = command
+        captured["env"] = env
+        return Done()
+
+    monkeypatch.setattr("data_navigator.cli.subprocess.run", fake_run)
+    result = runner.invoke(app, ["--config", str(CONFIG), "ui", "--port", "9999"])
+    assert result.exit_code == 0, result.output
+    command = captured["command"]
+    assert isinstance(command, list) and command[1:4] == ["-m", "streamlit", "run"]
+    assert command[4].endswith("streamlit_app.py") and "9999" in command
+    env = captured["env"]
+    assert isinstance(env, dict) and env["DN_CONFIG_PATH"] == str(CONFIG)

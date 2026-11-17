@@ -295,7 +295,9 @@ def _sample_node(runtime: AgentRuntime) -> NodeFn:
             validation_status=record.status,
             sample_confirmed=True,
             sample_executed=sample_state["status"] == "ok",
-            sample_row_count=sample_state.get("row_count"),
+            sample_row_count=sample_state.get("row_count")
+            if sample_state["status"] == "ok"
+            else None,
             details={"event": "sample", "status": sample_state["status"]},
         )
         messages.append(_tool_message(sample_call, for_model))

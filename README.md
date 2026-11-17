@@ -2,12 +2,15 @@
 
 A catalog-driven, read-only text-to-SQL agent for an internal Starburst (Trino)
 platform. It builds a lightweight data catalog from `information_schema`,
-historical SQL and the Airflow repository's `.sql` files, and (from phase 3)
-turns natural-language questions into validated, read-only SQL.
+historical SQL and the Airflow repository's `.sql` files, documents the tables
+with LLM-generated cards, and turns natural-language questions into validated,
+read-only SQL (or a list of candidate tables when it is not sure).
 
-**Status:** phases 0 and 1 are implemented (catalog build and refresh).
-Table cards, search, the agent and the UI follow in phases 2-4.
-Everything runs locally; there is no deployment code.
+**Status:** all four phases are implemented and tested locally against the
+bundled fixtures, a scripted ("replay") LLM and a simulated end-user
+connection. The checks that need the real Starburst cluster and the internal
+LLMaaS are listed in `docs/acceptance-real-environment.md`. Everything runs
+locally; there is no deployment code.
 
 ## Quick start
 
@@ -19,11 +22,22 @@ cp config.example.yaml config.yaml        # optional; the example points at the 
 cp .env.example .env                      # secrets (git-ignored); not needed for fixtures
 
 uv run data-navigator build --dry-run     # compute everything, write nothing
-uv run data-navigator build               # build ./catalog.db from the fixtures
+uv run data-navigator build               # build ./catalog.db: tables, patterns, cards, search index
 uv run data-navigator refresh             # incremental update (new history, changed files, metadata diff)
 uv run data-navigator report --top 20     # Markdown report: usage, join graph, lineage
+uv run data-navigator cards --tables cos.retail_ods.account --force   # (re)generate cards
+uv run data-navigator review list         # cards waiting for review; show / confirm / reject / edit
+uv run data-navigator index               # rebuild the search index only
+uv run data-navigator chat                # interactive agent (identity from DN_END_USER_USER)
+uv run data-navigator ui                  # the same as a local Streamlit page
+uv run data-navigator audit --limit 20    # recent audit entries
+uv run python eval/run_eval.py --golden eval/golden_set.example.yaml --out eval/report.md
 uv run data-navigator show-config         # effective configuration (never includes secrets)
 ```
+
+The example configuration runs the whole flow offline: `llm.provider: replay`
+answers from `eval/replay.example.yaml` and `starburst.end_user.source: fixture`
+simulates `EXPLAIN`/samples against the catalog with a static access list.
 
 `--config PATH` selects the YAML file (defaults to `./config.yaml` when present).
 Relative paths in the configuration are resolved against the current directory.
@@ -31,10 +45,12 @@ Any key can be overridden with `DN_<SECTION>__<KEY>`, for example
 `DN_STORAGE__URL=sqlite:////data/catalog.db` or
 `DN_METADATA__FIXTURE_DIR=tests/fixtures/information_schema_v2`.
 
-To run against the real platform, switch the three sources in the YAML file
+To run against the real platform, switch the sources in the YAML file
 (`metadata.source: starburst`, `query_history.source: starburst`,
-`sql_files.source: git`), fill in the `TODO(confirm)` values and put the
-credentials in `.env` (see below).
+`sql_files.source: git`, `starburst.end_user.source: starburst`,
+`llm.provider: openai_compatible` with `llm.base_url`/`llm.model`), fill in the
+`TODO(confirm)` values and put the credentials in `.env` (see below). The
+acceptance steps for that environment are in `docs/acceptance-real-environment.md`.
 
 ### Development
 
@@ -85,6 +101,60 @@ query history ──────┼─► template/split ─► normalise (const
 `build` and `refresh` are idempotent: re-running with unchanged inputs changes
 nothing, and counts are never doubled.
 
+## Table cards, search and the agent
+
+**Cards (phase 2).** After every `build`/`refresh` (and with `cards`), the top
+`cards.top_n_tables` tables by usage get a *context pack*: structure, usage
+statistics, the strongest join edges, up to `cards.max_queries_per_table`
+de-identified query patterns and the statements that populate the table, all
+inside tagged data blocks and capped at `cards.max_context_chars`. The pack's
+SHA-256 is the card's `input_hash`; a card is regenerated only when it changes
+(or with `--force`). The model must return a JSON object matching
+`cards/schemas.py` (key columns must exist in the table); invalid replies are
+retried up to `cards.max_generation_attempts` times. `review` lets a person
+confirm, reject or edit a card; edited fields and confirmed/rejected cards are
+never overwritten by regeneration.
+
+**Search.** Tables (name, comment, card text, columns) and query patterns are
+indexed in SQLite FTS5; with `llm.embedding_model` set, embeddings are stored
+as BLOBs and compared with numpy cosine similarity, and both rankings are fused
+with reciprocal rank fusion. Without an embedding model the search is
+full-text only (logged once).
+
+**Agent (phases 3-4).** A LangGraph state machine (`agent/graph.py`) drives an
+OpenAI-style tool loop:
+
+| Tool | What it does | Identity |
+| --- | --- | --- |
+| `search_tables` | hybrid search over table documents; returns name, owner, one-line purpose | public |
+| `get_table_card` | columns, key-column meanings, usage, join edges — only if `check_access` allows | end user |
+| `get_join_path` | shortest paths in the observed join graph; never guesses keys | public |
+| `similar_queries` | de-identified patterns whose tables the user may all read | end user |
+| `validate_sql` | read-only guard, then `EXPLAIN` with the user's credentials | end user |
+| `check_access` | `EXPLAIN SELECT * FROM t LIMIT 0`: allowed / denied / unknown | end user |
+| `run_sample` | only SQL that passed `validate_sql` (hash check); pauses with `interrupt` until the person confirms; row cap enforced in code | end user |
+| `final_answer` | structured answer: mode `sql` or `candidates` | - |
+
+Deterministic rules in `finalize`: mode `sql` is only possible when that exact
+statement passed `validate_sql` in this session; after
+`agent.max_sql_retries` validation failures or `agent.max_tool_steps` tool
+calls the model may only call `final_answer` and the reply is forced into
+candidates mode; candidates are annotated with `check_access` results and the
+source of their description (`card (ai_inferred)` is shown as "AI inferred").
+Sample rows are returned to the UI through the graph state only; the model
+sees row counts and column names unless `samples.send_to_llm` is true.
+
+`chat` (CLI, `[y/N]` confirmation) and `ui` (Streamlit, confirmation buttons)
+share the same `AgentSession`; every turn and every sample decision is written
+to the audit log (`audit_logs` table plus `audit.path` JSONL) with the SQL
+de-identified.
+
+**Evaluation.** `eval/run_eval.py` runs `eval/golden_set.example.yaml`
+(question, user, `expected_sql` or `expected_mode: candidates`,
+`expected_tables`) and reports mode accuracy, candidate recall@5, EXPLAIN
+first-pass rate and SQL execution correctness (the last one is only meaningful
+against the real cluster; the fixture connection returns synthetic rows).
+
 ## Configuration reference
 
 All keys live in `config.example.yaml`; `TODO(confirm)` marks values that still
@@ -98,6 +168,8 @@ need confirmation from the platform team (see `docs/open-questions.md`).
 | | `auth` | `basic` | `basic` / `jwt` / `none`, TODO(confirm) |
 | | `verify_ssl`, `request_timeout_s`, `source_tag` | `true`, `60`, `data-navigator` | |
 | `starburst.builder` | `user` | `data_navigator_builder` | password in `DN_BUILDER_PASSWORD` |
+| `starburst.end_user` | `source` | `fixture` | `starburst` / `fixture` (simulated EXPLAIN and samples) |
+| | `fixture_access` | `{}` | fixture only: user -> glob patterns of readable tables |
 | `samples` | `max_rows` | `10` | hard cap, not changeable by the LLM |
 | | `send_to_llm` | `false` | keep `false` until security approves |
 | | `query_max_execution_time` | `30s` | TODO(confirm) |
@@ -129,12 +201,17 @@ need confirmation from the platform team (see `docs/open-questions.md`).
 | | `join_key_min_count`, `filter_min_count` | `2`, `2` | column flags |
 | | `ownership_rules` | schema prefix rule | TODO(confirm) |
 | `teams` | `source`, `mapping`, `default_team` | `config`, `{}`, `null` | TODO(confirm) |
-| `llm` | `base_url` | **none** | required before phase 2; internal LLMaaS only |
-| | `model`, `embedding_model` | `null` | TODO(confirm) |
+| `llm` | `provider` | `none` | `openai_compatible` / `replay` / `none` |
+| | `base_url` | **none** | required for `openai_compatible`; public endpoints are rejected |
+| | `model`, `embedding_model` | `null` | TODO(confirm); no embedding model = text-only search |
 | | `timeout_s`, `max_retries`, `max_concurrency`, `requests_per_minute` | `60`, `3`, `4`, `60` | TODO(confirm) |
-| `agent` | `max_tool_steps`, `max_sql_retries`, `search_limit` | `10`, `3`, `8` | phase 3 |
-| `cards` | `top_n_tables`, `max_queries_per_table`, `max_context_chars`, `max_generation_attempts` | `200`, `5`, `12000`, `3` | phase 2 |
-| `audit` | `path` | `audit.jsonl` | phase 4 |
+| | `temperature`, `json_mode` | `0.0`, `true` | `json_mode` sends `response_format: json_object`, TODO(confirm) |
+| | `replay_path` | `eval/replay.example.yaml` | replay provider script |
+| `agent` | `max_tool_steps`, `max_sql_retries`, `search_limit` | `10`, `3`, `8` | per-turn limits |
+| | `similar_queries_limit`, `history_window` | `5`, `40` | |
+| `search` | `rrf_k`, `candidate_multiplier` | `60`, `3` | fusion parameters |
+| `cards` | `top_n_tables`, `max_queries_per_table`, `max_context_chars`, `max_generation_attempts` | `200`, `5`, `12000`, `3` | |
+| `audit` | `path` | `audit.jsonl` | JSONL copy of the audit trail; `null` keeps the database only |
 
 ### Secrets (`.env` or environment only)
 
@@ -160,12 +237,14 @@ A YAML file that contains a `password`, `token` or `api_key` key is rejected
 | SQL de-identification | `sqlproc/normalize.py` replaces every constant before storage; unparseable SQL keeps a hash and error type only; `tests/unit/test_architecture.py` scans the whole SQLite file for raw SQL and fixture constants |
 | Secrets | environment / `.env` only (`config.Secrets`, `SecretStr`); git token passed through an inline credential helper, URLs with user info rejected, error messages scrubbed |
 | Logging | clients log statement digests, statuses and row counts only; sample rows never reach the logs |
-| Identity injected by the harness | `build_end_user_client(settings, secrets, user=...)`: the identity comes from `DN_END_USER_USER`, never from tool arguments |
-| Internal LLM only | `llm.base_url` has no default |
-
-Phase 3/4 items (interrupt before samples, `samples.send_to_llm`, prompt
-data blocks, audit log) have their configuration and storage model in place
-but no runtime yet.
+| Identity injected by the harness | `agent/factory.py` binds the end-user client to `DN_END_USER_USER` (or `chat --user` for local runs) when the session is created; no tool takes a user argument (`tests/unit/test_agent_tools.py`) |
+| Confirmation before samples | `agent/graph.py` sample node: hash check against the validated-SQL registry, then LangGraph `interrupt`; nothing runs on decline or on a new question |
+| Sample data never persisted or logged | rows live in the graph state / UI only; the audit trail stores counts; `samples.send_to_llm` defaults to `false` |
+| Visibility tiers | `agent/tools.py`: names, owners and one-line purposes for everyone; columns, card details and similar patterns only when `check_access` is `allowed` |
+| Prompt-injection defence | catalog content reaches the model only inside `<tool_result>` / `<table>`… data blocks; the system prompts say those are data, not instructions |
+| Deterministic mode decision | `finalize`: mode `sql` requires a validated hash; forced candidates after the retry/step limits; access labels from `check_access` |
+| Internal LLM only | `llm.base_url` has no default and rejects well-known public endpoints; the client logs tokens and latency only |
+| Audit | `audit/log.py`: user, question, de-identified SQL, validation status, sample confirmed/executed/row count |
 
 ## Switching the storage to PostgreSQL
 
@@ -183,8 +262,10 @@ To finish the PostgreSQL backend:
    pool settings, and remove the `NotImplementedError`;
 2. run `uv run alembic upgrade head` against PostgreSQL and fix anything the
    dialect rejects (none expected); consider `JSONB` for the JSON columns;
-3. implement `TextIndex` with PostgreSQL full-text search and `VectorIndex`
-   with pgvector (phase 2 interfaces in `search/`);
+3. implement `search/postgres_index.py` (`PostgresTextIndex` with
+   `tsvector`, `PostgresVectorIndex` with pgvector) and wire them in
+   `search/factory.py`; the SQLite FTS5 and vector tables are created outside
+   Alembic because they are SQLite-specific;
 4. set `storage.backend: postgres` and `storage.url: postgresql+psycopg://...`.
 
 ## Project layout
@@ -192,19 +273,26 @@ To finish the PostgreSQL backend:
 ```
 src/data_navigator/
   config.py              settings (YAML + env) and secrets (env only)
-  cli.py                 build / refresh / report / show-config
-  starburst/             builder client (whitelist), end-user client (EXPLAIN, samples), error mapping
+  cli.py                 build / refresh / cards / index / review / chat / ui / audit / report / show-config
+  starburst/             builder client (whitelist), end-user client (EXPLAIN, samples), fixture connection, errors
   sources/               metadata, query history, .sql files, team mapping (protocols + implementations)
   sqlproc/               template, statements, normalize, fingerprint, parse, readonly_guard
   analysis/              usage, join_graph, lineage, ownership
   catalog/               ORM models, records, repository interface, SQLite/SQLAlchemy repo, migrations
-  pipeline/              build/refresh orchestration and the Markdown report
-  search/                TextIndex / VectorIndex protocols (implementations in phase 2)
-  agent/, ui/            placeholders with import rules (phases 3-4)
+  pipeline/              build/refresh orchestration, enrichment (cards + index), Markdown report
+  llm/                   OpenAI-compatible client, replay client, factory
+  cards/                 context packs, output schema, prompts, generator
+  search/                documents, SQLite FTS5 / vector indexes, hybrid RRF search, PostgreSQL stubs
+  agent/                 state, tools, prompts, LangGraph graph, session, factory
+  audit/                 audit logger
+  ui/                    Streamlit page
+  evaluation.py          golden-set runner (eval/run_eval.py is the entry point)
 tests/
   unit/                  one module per package; architecture and persistence-safety tests
   fixtures/              fake bank platform: information_schema JSON (v1, v2), query history JSONL, Airflow-style repo
+eval/                    golden_set.example.yaml, replay.example.yaml, run_eval.py
 docs/open-questions.md   everything marked TODO(confirm)
+docs/acceptance-real-environment.md   what can only be verified on the real platform
 ```
 
 ## Design decisions worth knowing

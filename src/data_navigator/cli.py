@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
 
-import click
 import typer
 
 from data_navigator.agent.factory import build_agent_session
@@ -420,7 +419,7 @@ def chat(
     while True:
         try:
             question = typer.prompt("you")
-        except (EOFError, KeyboardInterrupt, click.Abort):
+        except (EOFError, KeyboardInterrupt, typer.Abort):
             typer.echo("")
             break
         if question.strip().lower() in {"exit", "quit", "q"}:
